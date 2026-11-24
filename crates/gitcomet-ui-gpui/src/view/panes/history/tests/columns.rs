@@ -267,3 +267,70 @@ fn history_resize_state_visible_columns_fast_path_rejects_stale_current_width() 
         None
     );
 }
+
+/// Narrowing the branch column can let an optional column (here Author) fit
+/// and appear. Dragging the branch column back must restore its width, with
+/// that column stepping aside again, rather than stopping where the column
+/// that its own narrowing let in now begins.
+#[test]
+fn widening_the_branch_column_pushes_out_columns_its_narrowing_let_in() {
+    let mut layout = all_columns_visible_drag_layout();
+    // At the default branch width, Author misses by 10px.
+    let available = px(HISTORY_COL_BRANCH_PX
+        + HISTORY_COL_GRAPH_PX
+        + HISTORY_COL_AUTHOR_PX
+        + HISTORY_COL_MESSAGE_MIN_PX
+        - 10.0);
+    assert_eq!(
+        history_visible_columns_for_layout(available, layout, 100),
+        (false, false, false)
+    );
+    layout.branch_w = px(HISTORY_COL_BRANCH_PX - 20.0);
+    assert_eq!(
+        history_visible_columns_for_layout(available, layout, 100),
+        (true, false, false),
+        "narrowing the branch column lets Author in"
+    );
+
+    let mut state = history_column_resize_state(
+        HistoryColResizeHandle::Branch,
+        px(0.0),
+        available,
+        layout,
+        100,
+    );
+    let restored =
+        history_column_drag_clamped_width_for_state(&mut state, px(20.0), available, 100);
+    assert_eq!(restored, px(HISTORY_COL_BRANCH_PX));
+    layout.branch_w = restored;
+    assert_eq!(
+        history_visible_columns_for_layout_with_resize_state(available, layout, Some(&state), 100),
+        (false, false, false),
+        "Author steps aside again instead of squeezing the message"
+    );
+
+    // Within the room Author still has, the drag keeps the columns steady.
+    let mut state = history_column_resize_state(
+        HistoryColResizeHandle::Branch,
+        px(0.0),
+        available,
+        HistoryColumnDragLayout {
+            branch_w: px(HISTORY_COL_BRANCH_PX - 20.0),
+            ..layout
+        },
+        100,
+    );
+    let nudged = history_column_drag_clamped_width_for_state(&mut state, px(5.0), available, 100);
+    assert_eq!(
+        history_visible_columns_for_layout_with_resize_state(
+            available,
+            HistoryColumnDragLayout {
+                branch_w: nudged,
+                ..layout
+            },
+            Some(&state),
+            100
+        ),
+        (true, false, false)
+    );
+}

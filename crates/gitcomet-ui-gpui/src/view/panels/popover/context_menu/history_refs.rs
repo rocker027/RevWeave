@@ -259,6 +259,14 @@ pub(super) fn model(
     targets.retain(|target| refs.admits(target));
     targets.sort();
     targets.dedup();
+    // The checked-out branch leads, as in the graph's chips and refs card.
+    if let Some(head) = repo.head_branch.ready()
+        && let Some(ix) = targets.iter().position(|target| {
+            matches!(target, HistoryMenuRef::Branch(BranchMenuTarget::Local { name }) if name == head)
+        })
+    {
+        targets[..=ix].rotate_right(1);
+    }
     for target in targets {
         let expanded = this.expanded_history_ref.as_ref() == Some(&target);
         let mut label = match &target {

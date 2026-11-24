@@ -404,29 +404,29 @@ fn history_ref_items_preserve_display_order_and_ref_types_for_attached_head() {
         .collect::<Vec<_>>();
     assert_eq!(
         display,
-        vec!["v1.0.0", "v2.0.0", "main", "feature", "origin/main"]
+        vec!["main", "feature", "origin/main", "v1.0.0", "v2.0.0"]
     );
     assert!(matches!(
         ref_items[0].kind,
-        HistoryRefListItemKind::Tag { ref name } if name == "v1.0.0"
-    ));
-    assert!(matches!(
-        ref_items[2].kind,
         HistoryRefListItemKind::AttachedHead { ref branch } if branch == "main"
     ));
     assert!(matches!(
-        ref_items[3].kind,
+        ref_items[1].kind,
         HistoryRefListItemKind::LocalBranch { ref name } if name == "feature"
     ));
     assert!(matches!(
-        ref_items[4].kind,
+        ref_items[2].kind,
         HistoryRefListItemKind::RemoteBranch { ref name, .. } if name == "origin/main"
+    ));
+    assert!(matches!(
+        ref_items[3].kind,
+        HistoryRefListItemKind::Tag { ref name } if name == "v1.0.0"
     ));
 
     let hidden_tags = Arc::<[HistoryTextVm]>::from([]);
     let ref_items_without_tags = history_ref_items_from_displayed_refs(
         &hidden_tags,
-        ref_items.iter().skip(2).cloned().collect::<Vec<_>>().into(),
+        ref_items.iter().take(3).cloned().collect::<Vec<_>>().into(),
     );
     let display = ref_items_without_tags
         .iter()

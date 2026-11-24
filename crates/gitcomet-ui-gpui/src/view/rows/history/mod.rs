@@ -762,48 +762,8 @@ fn history_table_row(
                         },
                     };
                     if this.complete_history_double_click(click, clicked)
-                        && let Some(action) = this
-                            .active_repo()
-                            .and_then(|repo| history_double_click_branch(repo, &target))
+                        && this.activate_history_branch(repo_id, &target, e.position(), window, cx)
                     {
-                        match action {
-                            HistoryBranchActivation::Checkout(name) => {
-                                this.store.dispatch(Msg::CheckoutBranch { repo_id, name });
-                            }
-                            HistoryBranchActivation::Open(path) => {
-                                crate::app::open_repository_from_view(
-                                    cx,
-                                    window.window_handle().window_id(),
-                                    path,
-                                );
-                            }
-                            HistoryBranchActivation::CreateTracking {
-                                remote,
-                                branch,
-                                local_branch,
-                            } => {
-                                this.store.dispatch(Msg::CheckoutRemoteBranch {
-                                    repo_id,
-                                    remote,
-                                    branch,
-                                    local_branch,
-                                    mode: gitcomet_core::services::CheckoutRemoteBranchMode::Create,
-                                });
-                            }
-                            HistoryBranchActivation::PromptForTrackingName { remote, branch } => {
-                                this.open_popover_at(
-                                    PopoverKind::CheckoutRemoteBranchPrompt {
-                                        repo_id,
-                                        remote,
-                                        branch,
-                                    },
-                                    e.position(),
-                                    window,
-                                    cx,
-                                );
-                            }
-                        }
-                        cx.notify();
                         return;
                     }
                 }

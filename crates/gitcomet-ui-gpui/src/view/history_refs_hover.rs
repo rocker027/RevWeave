@@ -2,6 +2,7 @@ use super::*;
 use crate::kit::interaction::{self as controls, ControlInteractionExt as _};
 use crate::localization::Language;
 use gitcomet_core::domain::Worktree;
+use gitcomet_state::msg::CommitSelectMode;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -12,7 +13,8 @@ const HISTORY_REFS_HOVER_ROW_COMFORTABLE_HEIGHT_PX: f32 = 32.0;
 const HISTORY_REFS_HOVER_CLOSE_GRACE_MS: u64 = 120;
 const HISTORY_REFS_HOVER_OPEN_DELAY_MS: u64 = 160;
 const HISTORY_REFS_HOVER_WIDTH_PX: f32 = 240.0;
-const HISTORY_REFS_HOVER_MAX_HEIGHT_PX: f32 = 260.0;
+// The card's padding and border around its rows, for sizing it to its content.
+const HISTORY_REFS_HOVER_CHROME_PX: f32 = 12.0;
 const HISTORY_REFS_HOVER_POINTER_INSET_PX: f32 = 16.0;
 pub(in crate::view) const HISTORY_REFS_HOVER_MENU_INVOKER_PREFIX: &str = "history_refs_hover_menu_";
 pub(in crate::view) const HISTORY_REFS_PICKER_MENU_INVOKER_PREFIX: &str = "history_refs_picker_";
@@ -65,6 +67,11 @@ pub(in crate::view) struct HistoryRefsHoverHost {
     pending_show: Option<HistoryRefsHoverState>,
     item_menu_open: bool,
     pinned_item_ix: Option<usize>,
+    // The item the last single click landed on; a double click must repeat it.
+    first_item_click: Option<(CommitId, usize)>,
+    // The commit a click in the card selected. Its own selection arriving in
+    // the history state must not retract the card, as GitKraken's list stays.
+    card_selection: Option<(RepoId, CommitId)>,
     panel_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
     last_mouse_pos: Point<Pixels>,
     show_seq: u64,
@@ -80,6 +87,8 @@ impl HistoryRefsHoverHost {
             pending_show: None,
             item_menu_open: false,
             pinned_item_ix: None,
+            first_item_click: None,
+            card_selection: None,
             panel_bounds: Rc::new(RefCell::new(None)),
             last_mouse_pos: point(px(0.0), px(0.0)),
             show_seq: 0,
@@ -174,6 +183,8 @@ impl HistoryRefsHoverHost {
                 this.state = Some(next);
                 this.item_menu_open = false;
                 this.pinned_item_ix = None;
+                this.first_item_click = None;
+                this.card_selection = None;
                 *this.panel_bounds.borrow_mut() = None;
                 this.close_seq = this.close_seq.wrapping_add(1);
                 cx.notify();
@@ -192,6 +203,8 @@ impl HistoryRefsHoverHost {
         if changed {
             self.item_menu_open = false;
             self.pinned_item_ix = None;
+            self.first_item_click = None;
+            self.card_selection = None;
             *self.panel_bounds.borrow_mut() = None;
             self.state = Some(next);
             // The host is an uncached overlay of the root view, so notifying it
@@ -231,6 +244,8 @@ impl HistoryRefsHoverHost {
         let had_pending = self.pending_show.take().is_some();
         self.item_menu_open = false;
         self.pinned_item_ix = None;
+        self.first_item_click = None;
+        self.card_selection = None;
         if !had_state && !had_pending {
             return;
         }
@@ -316,6 +331,8 @@ impl HistoryRefsHoverHost {
                     return;
                 }
                 this.state = None;
+                this.first_item_click = None;
+                this.card_selection = None;
                 *this.panel_bounds.borrow_mut() = None;
                 this.close_seq = this.close_seq.wrapping_add(1);
                 cx.notify();
@@ -335,6 +352,8 @@ impl HistoryRefsHoverHost {
 
         self.item_menu_open = open;
         if open {
+            self.first_item_click = None;
+            self.card_selection = None;
             self.cancel_pending_show();
         } else {
             self.pinned_item_ix = None;
@@ -432,6 +451,111 @@ impl HistoryRefsHoverHost {
             cx.notify();
         });
     }
+
+    /// The branch a double click on this item activates; tags and a detached
+    /// HEAD have none.
+    fn item_branch_target(item: &HistoryRefListItem) -> Option<BranchMenuTarget> {
+        match &item.kind {
+            HistoryRefListItemKind::LocalBranch { name }
+            | HistoryRefListItemKind::AttachedHead { branch: name } => {
+                Some(BranchMenuTarget::local(name))
+            }
+            HistoryRefListItemKind::RemoteBranch { remote, branch, .. } => {
+                Some(BranchMenuTarget::remote(remote, branch))
+            }
+            HistoryRefListItemKind::Tag { .. } | HistoryRefListItemKind::DetachedHead => None,
+        }
+    }
+
+    /// Left clicks behave like the graph's branch chips: a click selects the
+    /// commit and leaves the card open, a double click on the same branch
+    /// checks it out. The menu stays on right click.
+    #[allow(clippy::too_many_arguments)]
+    fn click_item(
+        &mut self,
+        repo_id: RepoId,
+        commit_id: CommitId,
+        item_ix: usize,
+        item: &HistoryRefListItem,
+        event: &ClickEvent,
+        window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        // The card's rows take no keyboard focus, so only pointer clicks land here.
+        let ClickEvent::Mouse(click) = event else {
+            return;
+        };
+        let first = self.first_item_click.take();
+        if click.down.click_count != click.up.click_count {
+            return;
+        }
+        let clicked = (commit_id.clone(), item_ix);
+        let modifiers = event.modifiers();
+        let Some(history_view) = self.history_view(cx) else {
+            return;
+        };
+        match click.up.click_count {
+            1 => {
+                if modifiers.number_of_modifiers() == 0 {
+                    self.first_item_click = Some(clicked);
+                }
+                self.card_selection = Some((repo_id, commit_id.clone()));
+                let mode = if modifiers.shift {
+                    CommitSelectMode::Range
+                } else if modifiers.secondary() || modifiers.control || modifiers.platform {
+                    CommitSelectMode::Toggle
+                } else {
+                    CommitSelectMode::Single
+                };
+                history_view.update(cx, |history, cx| {
+                    // The card occludes the panel's own mouse-down focus, so
+                    // move focus like a row click does: arrows then step from here.
+                    window.focus(&history.history_panel_focus_handle, cx);
+                    history.cancel_history_find_navigation();
+                    history.select_history_commit(repo_id, commit_id, mode, None);
+                    cx.notify();
+                });
+            }
+            2 if first == Some(clicked) && modifiers.number_of_modifiers() == 0 => {
+                // A checkout rewrites the refs this card lists; let it close.
+                self.card_selection = None;
+                let Some(target) = Self::item_branch_target(item) else {
+                    return;
+                };
+                let position = event.position();
+                history_view.update(cx, |history, cx| {
+                    // The card can outlive a ref update; act only on a branch
+                    // that still points at the commit it was listed under.
+                    let still_listed = history.active_repo().is_some_and(|repo| {
+                        repo.id == repo_id
+                            && crate::view::rows::sidebar::branch_commit_id(repo, &target).as_ref()
+                                == Some(&commit_id)
+                    });
+                    if still_listed {
+                        history.activate_history_branch(repo_id, &target, position, window, cx);
+                    }
+                });
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether a history state change leaves the card open: only when the card
+    /// is still on the commit its own click selected and that is the selection.
+    pub(in crate::view) fn kept_by_card_selection(
+        &self,
+        selected: Option<&(RepoId, CommitId)>,
+    ) -> bool {
+        let (Some(state), Some(card)) = (self.state.as_ref(), self.card_selection.as_ref()) else {
+            return false;
+        };
+        selected == Some(card) && state.repo_id == card.0 && state.commit_id == card.1
+    }
+
+    fn history_view(&self, cx: &App) -> Option<Entity<HistoryView>> {
+        let root = self.root_view.upgrade()?;
+        Some(root.read(cx).main_pane.read(cx).history_view.clone())
+    }
 }
 
 fn history_refs_hover_layout(
@@ -494,7 +618,14 @@ impl Render for HistoryRefsHoverHost {
         let language = Language::current(cx);
         let ui_scale = ui_scale::UiScale::current(cx);
         let panel_w = ui_scale.px(HISTORY_REFS_HOVER_WIDTH_PX);
-        let max_panel_h = ui_scale.px(HISTORY_REFS_HOVER_MAX_HEIGHT_PX);
+        // Size the card to every ref, as GitKraken's list shows them all at
+        // once; the layout opens it on the side that fits and only scrolls
+        // when the window has no room for the whole list.
+        let max_panel_h = ui_scale.row_height(
+            HISTORY_REFS_HOVER_ROW_HEIGHT_PX,
+            HISTORY_REFS_HOVER_ROW_COMFORTABLE_HEIGHT_PX,
+        ) * state.items.len() as f32
+            + ui_scale.px(HISTORY_REFS_HOVER_CHROME_PX);
         let pointer_inset = ui_scale.px(HISTORY_REFS_HOVER_POINTER_INSET_PX);
         let gap = px(0.0);
         let margin = ui_scale.px(8.0);
@@ -522,26 +653,19 @@ impl Render for HistoryRefsHoverHost {
                     format!("{label}\n{worktree_label}\n{}", worktree.path.display()).into()
                 },
             );
-            let worktree_badge = worktree.map(|worktree| {
+            // Icon only, like GitKraken's list: the branch name keeps the
+            // width, and the row's tooltip names the worktree's path.
+            let worktree_badge = worktree.map(|_| {
                 div()
                     .debug_selector(|| format!("{}_worktree", Self::item_debug_selector(item)))
+                    .flex_none()
                     .flex()
                     .items_center()
-                    .gap_1()
-                    .min_w(px(0.0))
-                    .max_w(layout.panel_w * 0.40)
-                    .text_color(theme.colors.foreground.secondary)
                     .child(svg_icon(
                         "icons/git_worktree.svg",
                         theme.colors.accent.foreground,
                         ui_scale.px(12.0),
                     ))
-                    .child(
-                        div()
-                            .min_w(px(0.0))
-                            .truncate()
-                            .child(path_display::repo_path_name(&worktree.path)),
-                    )
             });
             let frozen = self.item_menu_open;
             let pinned = self.pinned_item_ix == Some(ix);
@@ -588,12 +712,12 @@ impl Render for HistoryRefsHoverHost {
                                 return;
                             }
                             cx.stop_propagation();
-                            this.open_item_menu(
+                            this.click_item(
                                 state.repo_id,
                                 commit_id.clone(),
                                 ix,
                                 &item_for_left,
-                                e.position(),
+                                e,
                                 window,
                                 cx,
                             );
@@ -781,7 +905,7 @@ mod tests {
             px(290.0),
             size(px(300.0), px(180.0)),
             px(HISTORY_REFS_HOVER_WIDTH_PX),
-            px(HISTORY_REFS_HOVER_MAX_HEIGHT_PX),
+            px(260.0),
             px(HISTORY_REFS_HOVER_POINTER_INSET_PX),
             px(0.0),
             px(8.0),
@@ -803,7 +927,7 @@ mod tests {
             px(148.0),
             size(px(160.0), px(240.0)),
             px(HISTORY_REFS_HOVER_WIDTH_PX),
-            px(HISTORY_REFS_HOVER_MAX_HEIGHT_PX),
+            px(260.0),
             px(HISTORY_REFS_HOVER_POINTER_INSET_PX),
             px(0.0),
             px(8.0),
@@ -821,7 +945,7 @@ mod tests {
             px(44.0),
             size(px(320.0), px(220.0)),
             px(HISTORY_REFS_HOVER_WIDTH_PX),
-            px(HISTORY_REFS_HOVER_MAX_HEIGHT_PX),
+            px(260.0),
             px(HISTORY_REFS_HOVER_POINTER_INSET_PX),
             px(0.0),
             px(8.0),
@@ -834,13 +958,47 @@ mod tests {
     }
 
     #[test]
+    fn history_refs_hover_layout_opens_below_when_the_content_fits_there() {
+        // More room above, but a two-row card fits below the source.
+        let source = Bounds::new(point(px(24.0), px(300.0)), size(px(40.0), px(24.0)));
+        let content_h = px(24.0 * 2.0 + HISTORY_REFS_HOVER_CHROME_PX);
+        let layout = history_refs_hover_layout(
+            source,
+            px(44.0),
+            size(px(320.0), px(600.0)),
+            px(HISTORY_REFS_HOVER_WIDTH_PX),
+            content_h,
+            px(HISTORY_REFS_HOVER_POINTER_INSET_PX),
+            px(0.0),
+            px(8.0),
+        );
+        assert!(matches!(layout.anchor_corner, Anchor::TopLeft));
+        assert_eq!(layout.max_panel_h, content_h);
+
+        // A list taller than the room below opens above when it fits there.
+        let tall_h = px(24.0 * 11.0 + HISTORY_REFS_HOVER_CHROME_PX);
+        let layout = history_refs_hover_layout(
+            source,
+            px(44.0),
+            size(px(320.0), px(600.0)),
+            px(HISTORY_REFS_HOVER_WIDTH_PX),
+            tall_h,
+            px(HISTORY_REFS_HOVER_POINTER_INSET_PX),
+            px(0.0),
+            px(8.0),
+        );
+        assert!(matches!(layout.anchor_corner, Anchor::BottomLeft));
+        assert_eq!(layout.max_panel_h, tall_h);
+    }
+
+    #[test]
     fn history_refs_hover_layout_keeps_source_pointer_inside_panel_top_edge() {
         let layout = history_refs_hover_layout(
             Bounds::new(point(px(24.0), px(20.0)), size(px(360.0), px(16.0))),
             px(340.0),
             size(px(520.0), px(220.0)),
             px(HISTORY_REFS_HOVER_WIDTH_PX),
-            px(HISTORY_REFS_HOVER_MAX_HEIGHT_PX),
+            px(260.0),
             px(HISTORY_REFS_HOVER_POINTER_INSET_PX),
             px(0.0),
             px(8.0),

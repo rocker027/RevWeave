@@ -266,6 +266,10 @@ fn repo_commit_is_ancestor_of_head(repo: &RepoState, commit_id: &CommitId) -> bo
     false
 }
 
+/// Above this many branches on a commit, "Copy branch name" lives only in each
+/// branch's group of the commit menu.
+const COMMIT_MENU_MAX_BRANCH_COPY_ENTRIES: usize = 3;
+
 /// Branch names a commit's menu offers to copy: the local branches pointing at
 /// it, or, when there are none, its remote branches as `remote/branch` (the
 /// same text the branch's own menu copies). Only branches `refs` admits.
@@ -567,7 +571,13 @@ fn model_with_header(
                 commit_id: commit_id.clone(),
             }),
         });
-        let names = commit_branch_names_to_copy(this, repo_id, commit_id, refs);
+        let mut names = commit_branch_names_to_copy(this, repo_id, commit_id, refs);
+        // A busy commit would push its own actions far down the menu with one
+        // entry per branch. Each branch's group offers the copy too, as
+        // GitKraken keeps it in the branch's submenu.
+        if names.len() > COMMIT_MENU_MAX_BRANCH_COPY_ENTRIES {
+            names.clear();
+        }
         let single = names.len() == 1;
         for name in names {
             items.push(ContextMenuItem::Entry {

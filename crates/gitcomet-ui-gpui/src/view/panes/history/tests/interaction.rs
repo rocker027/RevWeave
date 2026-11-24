@@ -1188,34 +1188,19 @@ fn history_refs_hover_lists_refs_and_opens_item_menus_in_mode(
         "history_refs_hover_item_local_branch_feature",
         gpui::MouseButton::Left,
     );
-    let feature_pinned_ix = cx.update(|_window, app| {
-        crate::view::test_support::history_refs_hover_pinned_item_ix(view.read(app), app)
-    });
     cx.update(|_window, app| {
         assert_eq!(
             crate::view::test_support::popover_kind(view.read(app), app),
-            Some(PopoverKind::CommitMenu {
-                repo_id,
-                commit_id: commit_id.clone(),
-                refs: CommitMenuRefs::Only(HistoryMenuRef::Branch(BranchMenuTarget::local(
-                    "feature"
-                ))),
-            })
+            None,
+            "a left click on a card item selects; only a right click opens its menu"
         );
-    });
-    assert!(cx.debug_bounds("history_refs_hover_panel").is_some());
-    cx.update(|_window, app| {
         assert!(crate::view::test_support::history_refs_hover_is_open(
             view.read(app),
             app
         ));
         assert_eq!(
             crate::view::test_support::history_refs_hover_pinned_item_ix(view.read(app), app),
-            feature_pinned_ix
-        );
-        assert_eq!(
-            crate::view::test_support::history_refs_hover_pinned_item_text(view.read(app), app),
-            Some("feature".into())
+            None
         );
     });
 
@@ -1224,17 +1209,11 @@ fn history_refs_hover_lists_refs_and_opens_item_menus_in_mode(
         "history_refs_hover_item_tag_release",
         gpui::MouseButton::Left,
     );
-    let release_left_pinned_ix = cx.update(|_window, app| {
-        crate::view::test_support::history_refs_hover_pinned_item_ix(view.read(app), app)
-    });
     cx.update(|_window, app| {
         assert_eq!(
             crate::view::test_support::popover_kind(view.read(app), app),
-            Some(PopoverKind::CommitMenu {
-                repo_id,
-                commit_id: commit_id.clone(),
-                refs: CommitMenuRefs::Only(HistoryMenuRef::Tag("release".into())),
-            })
+            None,
+            "a left click on a card item selects; only a right click opens its menu"
         );
         assert!(crate::view::test_support::history_refs_hover_is_open(
             view.read(app),
@@ -1242,11 +1221,7 @@ fn history_refs_hover_lists_refs_and_opens_item_menus_in_mode(
         ));
         assert_eq!(
             crate::view::test_support::history_refs_hover_pinned_item_ix(view.read(app), app),
-            release_left_pinned_ix
-        );
-        assert_eq!(
-            crate::view::test_support::history_refs_hover_pinned_item_text(view.read(app), app),
-            Some("release".into())
+            None
         );
     });
 
@@ -1352,32 +1327,19 @@ fn history_refs_hover_lists_refs_and_opens_item_menus_in_mode(
         "history_refs_hover_item_tag_release",
         gpui::MouseButton::Left,
     );
-    let release_pinned_ix = cx.update(|_window, app| {
-        crate::view::test_support::history_refs_hover_pinned_item_ix(view.read(app), app)
-    });
     cx.update(|_window, app| {
         assert_eq!(
             crate::view::test_support::popover_kind(view.read(app), app),
-            Some(PopoverKind::CommitMenu {
-                repo_id,
-                commit_id: commit_id.clone(),
-                refs: CommitMenuRefs::Only(HistoryMenuRef::Tag("release".into())),
-            })
+            None,
+            "a left click on a card item selects; only a right click opens its menu"
         );
-    });
-    assert!(cx.debug_bounds("history_refs_hover_panel").is_some());
-    cx.update(|_window, app| {
         assert!(crate::view::test_support::history_refs_hover_is_open(
             view.read(app),
             app
         ));
         assert_eq!(
             crate::view::test_support::history_refs_hover_pinned_item_ix(view.read(app), app),
-            release_pinned_ix
-        );
-        assert_eq!(
-            crate::view::test_support::history_refs_hover_pinned_item_text(view.read(app), app),
-            Some("release".into())
+            None
         );
     });
 
@@ -2091,7 +2053,7 @@ fn history_refs_hover_closes_when_click_selects_another_commit_without_mouse_mov
 }
 
 #[gpui::test]
-fn history_refs_hover_item_click_keeps_existing_history_selection(cx: &mut gpui::TestAppContext) {
+fn history_refs_hover_item_click_selects_its_commit_like_a_chip(cx: &mut gpui::TestAppContext) {
     let (store, events) = AppStore::new_test(Arc::new(BlockingBackend));
     let (view, cx) =
         cx.add_window_view(|window, cx| GitCometView::new(store, events, None, window, cx));
@@ -2201,34 +2163,22 @@ fn history_refs_hover_item_click_keeps_existing_history_selection(cx: &mut gpui:
     cx.update(|_window, app| {
         assert_eq!(
             crate::view::test_support::popover_kind(view.read(app), app),
-            Some(PopoverKind::CommitMenu {
-                repo_id,
-                commit_id: hovered_commit.clone(),
-                refs: CommitMenuRefs::Only(HistoryMenuRef::Branch(BranchMenuTarget::local(
-                    "feature"
-                ))),
-            })
+            None
         );
         assert!(crate::view::test_support::history_refs_hover_is_open(
             view.read(app),
             app
         ));
+    });
+    // Like a click on the row's own branch chip, it selects the hovered commit.
+    cx.update(|_window, app| {
+        let history = view.read(app).main_pane.read(app).history_view.clone();
+        let history = history.read(app);
         assert_eq!(
-            crate::view::test_support::history_refs_hover_pinned_item_text(view.read(app), app),
-            Some("feature".into())
+            history.history_navigation_selection(history.active_repo().unwrap(), true),
+            Some(HistoryPrimarySelection::Commit(hovered_commit.clone()))
         );
     });
-    assert_eq!(
-        cx.update(|_window, app| {
-            let main_pane = view.read(app).main_pane.clone();
-            let history_view = main_pane.read(app).history_view.clone();
-            let history = history_view.read(app);
-            history
-                .active_repo()
-                .and_then(|repo| repo.history_state.selected_commit.clone())
-        }),
-        Some(selected_commit)
-    );
 }
 
 #[gpui::test]

@@ -267,6 +267,13 @@ fn home_end_select_first_and_last_row(cx: &mut gpui::TestAppContext, indexed: bo
     fixture.assert_commit(cx, 2);
     cx.simulate_keystrokes("home");
     fixture.assert_commit(cx, 0);
+    // macOS's Command+Down/Up do the same, as in GitKraken.
+    if cfg!(target_os = "macos") {
+        cx.simulate_keystrokes("cmd-down");
+        fixture.assert_commit(cx, 2);
+        cx.simulate_keystrokes("cmd-up");
+        fixture.assert_commit(cx, 0);
+    }
 
     for (key, commit) in [("end", 2), ("home", 0)] {
         let mut state = (*fixture.store.snapshot()).clone();

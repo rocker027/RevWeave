@@ -73,6 +73,7 @@ fn arm_hovers(view: &mut GitCometView, cx: &mut gpui::Context<GitCometView>) {
             author: "A contributor".into(),
             when: "Today".into(),
             source_bounds: bounds,
+            cell_bounds: bounds,
             source_pointer_x: bounds.center().x,
         },
         bounds.center(),

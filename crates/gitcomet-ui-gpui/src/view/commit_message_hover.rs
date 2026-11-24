@@ -22,6 +22,9 @@ const COMMIT_MESSAGE_HOVER_CLOSE_GRACE_MS: u64 = 120;
 /// enough that a hand resting on the mouse does not.
 const COMMIT_MESSAGE_HOVER_STEADY_RADIUS_PX: f32 = 2.0;
 const COMMIT_MESSAGE_HOVER_WIDTH_PX: f32 = 420.0;
+// The narrowest message cell the card keeps itself within; below it the card
+// may extend past the cell, still inside the window.
+const COMMIT_MESSAGE_HOVER_MIN_WIDTH_PX: f32 = 240.0;
 const COMMIT_MESSAGE_HOVER_MAX_HEIGHT_PX: f32 = 320.0;
 const COMMIT_MESSAGE_HOVER_POINTER_INSET_PX: f32 = 16.0;
 /// Cap on the message actually shaped. A pathological commit body would
@@ -44,6 +47,9 @@ pub(in crate::view) struct CommitMessageHoverState {
     pub(in crate::view) author: SharedString,
     pub(in crate::view) when: SharedString,
     pub(in crate::view) source_bounds: Bounds<Pixels>,
+    /// The whole message cell. Chips and marks can narrow `source_bounds`, the
+    /// pointer's trigger, while the card should keep to the cell itself.
+    pub(in crate::view) cell_bounds: Bounds<Pixels>,
     pub(in crate::view) source_pointer_x: Pixels,
 }
 
@@ -321,19 +327,30 @@ impl CommitMessageHoverHost {
 /// Places the card against the hovered row, preferring below and flipping above
 /// when there is more room there, and keeps it inside the window.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn commit_message_hover_layout(
     source: Bounds<Pixels>,
+    cell: Bounds<Pixels>,
     source_pointer_x: Pixels,
     window_size: Size<Pixels>,
     preferred_panel_w: Pixels,
     preferred_max_panel_h: Pixels,
+    min_panel_w: Pixels,
     pointer_inset: Pixels,
     gap: Pixels,
     margin: Pixels,
 ) -> CommitMessageHoverLayout {
     let horizontal_margin = margin.min(window_size.width * 0.5);
-    let min_x = horizontal_margin;
-    let max_right = (window_size.width - horizontal_margin).max(min_x);
+    let mut min_x = horizontal_margin;
+    let mut max_right = (window_size.width - horizontal_margin).max(min_x);
+    // Stay over the message it explains when its cell has room: a card
+    // reaching past the history covers the details pane beside it.
+    let cell_left = cell.left().max(min_x);
+    let cell_right = cell.right().min(max_right);
+    if cell_right - cell_left >= min_panel_w {
+        min_x = cell_left;
+        max_right = cell_right;
+    }
     let available_w = (max_right - min_x).max(px(0.0));
     let panel_w = preferred_panel_w.min(available_w);
     let max_x = (max_right - panel_w).max(min_x);
@@ -439,10 +456,12 @@ impl Render for CommitMessageHoverHost {
 
         let layout = commit_message_hover_layout(
             state.source_bounds,
+            state.cell_bounds,
             state.source_pointer_x,
             window.viewport_size(),
             ui_scale.px(COMMIT_MESSAGE_HOVER_WIDTH_PX),
             ui_scale.px(COMMIT_MESSAGE_HOVER_MAX_HEIGHT_PX),
+            ui_scale.px(COMMIT_MESSAGE_HOVER_MIN_WIDTH_PX),
             ui_scale.px(COMMIT_MESSAGE_HOVER_POINTER_INSET_PX),
             ui_scale.px(4.0),
             ui_scale.px(8.0),
@@ -534,6 +553,7 @@ mod tests {
             author: "Ada Lovelace".into(),
             when: "2 days ago".into(),
             source_bounds: Bounds::new(point(px(0.0), px(100.0)), size(px(400.0), px(28.0))),
+            cell_bounds: Bounds::new(point(px(0.0), px(100.0)), size(px(400.0), px(28.0))),
             source_pointer_x: px(120.0),
         }
     }
@@ -711,10 +731,12 @@ mod tests {
         let low = Bounds::new(point(px(0.0), px(560.0)), size(px(400.0), px(28.0)));
         let layout = commit_message_hover_layout(
             low,
+            low,
             px(120.0),
             window,
             px(420.0),
             px(320.0),
+            px(240.0),
             px(16.0),
             px(4.0),
             px(8.0),
@@ -724,10 +746,12 @@ mod tests {
         let high = Bounds::new(point(px(0.0), px(40.0)), size(px(400.0), px(28.0)));
         let layout = commit_message_hover_layout(
             high,
+            high,
             px(120.0),
             window,
             px(420.0),
             px(320.0),
+            px(240.0),
             px(16.0),
             px(4.0),
             px(8.0),
@@ -741,10 +765,12 @@ mod tests {
         let row = Bounds::new(point(px(420.0), px(100.0)), size(px(400.0), px(28.0)));
         let layout = commit_message_hover_layout(
             row,
+            row,
             px(480.0),
             window,
             px(420.0),
             px(320.0),
+            px(240.0),
             px(16.0),
             px(4.0),
             px(8.0),
@@ -752,5 +778,65 @@ mod tests {
 
         assert!(layout.anchor.x >= px(8.0));
         assert!(layout.anchor.x + layout.panel_w <= px(492.0));
+    }
+
+    #[test]
+    fn card_stays_over_a_wide_enough_message_cell() {
+        // The details pane sits right of the message cell, which ends at 850.
+        let window = size(px(1280.0), px(800.0));
+        let cell = Bounds::new(point(px(525.0), px(520.0)), size(px(325.0), px(28.0)));
+        let layout = commit_message_hover_layout(
+            cell,
+            cell,
+            px(650.0),
+            window,
+            px(420.0),
+            px(320.0),
+            px(240.0),
+            px(16.0),
+            px(4.0),
+            px(8.0),
+        );
+        assert_eq!(layout.anchor.x, px(525.0));
+        assert_eq!(layout.panel_w, px(325.0));
+
+        // A cell narrower than the card's minimum keeps the window bounds.
+        let narrow = Bounds::new(point(px(525.0), px(520.0)), size(px(200.0), px(28.0)));
+        let layout = commit_message_hover_layout(
+            narrow,
+            narrow,
+            px(600.0),
+            window,
+            px(420.0),
+            px(320.0),
+            px(240.0),
+            px(16.0),
+            px(4.0),
+            px(8.0),
+        );
+        assert_eq!(layout.panel_w, px(420.0));
+        assert!(layout.anchor.x + layout.panel_w <= px(1272.0));
+    }
+
+    #[test]
+    fn card_keeps_to_the_cell_when_chips_narrow_its_trigger() {
+        // A worktree chip leaves a 220px trigger in a 325px message cell.
+        let window = size(px(1280.0), px(800.0));
+        let cell = Bounds::new(point(px(525.0), px(520.0)), size(px(325.0), px(28.0)));
+        let trigger = Bounds::new(point(px(525.0), px(520.0)), size(px(220.0), px(28.0)));
+        let layout = commit_message_hover_layout(
+            trigger,
+            cell,
+            px(600.0),
+            window,
+            px(420.0),
+            px(320.0),
+            px(240.0),
+            px(16.0),
+            px(4.0),
+            px(8.0),
+        );
+        assert!(layout.anchor.x >= px(525.0));
+        assert!(layout.anchor.x + layout.panel_w <= px(850.0));
     }
 }

@@ -833,6 +833,20 @@ impl HistoryView {
     }
 
     fn notify_fingerprint_for(state: &AppState, show_history_tags: bool) -> u64 {
+        Self::history_fingerprint_for(state, show_history_tags, true)
+    }
+
+    /// The fingerprint without the selection: whether the rows and the refs
+    /// they list changed, as opposed to only which row is selected.
+    fn content_fingerprint_for(state: &AppState, show_history_tags: bool) -> u64 {
+        Self::history_fingerprint_for(state, show_history_tags, false)
+    }
+
+    fn history_fingerprint_for(
+        state: &AppState,
+        show_history_tags: bool,
+        include_selection: bool,
+    ) -> u64 {
         let mut hasher = FxHasher::default();
         state.active_repo.hash(&mut hasher);
         state
@@ -856,19 +870,22 @@ impl HistoryView {
                 repo.tags_rev.hash(&mut hasher);
             }
             repo.stashes_rev.hash(&mut hasher);
-            repo.history_state.selected_commit_rev.hash(&mut hasher);
+            if include_selection {
+                repo.history_state.selected_commit_rev.hash(&mut hasher);
+                // The browsed commit's mark, which can follow the selection.
+                // Not `file_browser_rev`: that moves on every sidebar search
+                // keystroke.
+                repo.file_browser.source.hash(&mut hasher);
+                repo.history_state.worktree_selection_rev.hash(&mut hasher);
+            }
             repo.history_state.indexed.rev.hash(&mut hasher);
             repo.navigation.comparison_mark.hash(&mut hasher);
-            // The browsed commit's mark. Not `file_browser_rev`: that moves on
-            // every sidebar search keystroke.
-            repo.file_browser.source.hash(&mut hasher);
             // The linked-worktree rows live in this table: their badge counts come
             // from the dirty scan and the selected row from the worktree selection,
             // so both revs have to move the fingerprint or the rows never repaint.
             // Clean worktrees' chips come from the worktree list.
             repo.worktrees_rev.hash(&mut hasher);
             repo.worktree_dirty_rev.hash(&mut hasher);
-            repo.history_state.worktree_selection_rev.hash(&mut hasher);
             repo.worktree_status_cache_rev().hash(&mut hasher);
             repo.staged_status_cache_rev().hash(&mut hasher);
         }
@@ -907,6 +924,10 @@ impl HistoryView {
             let next = Arc::clone(&model.read(cx).state);
             let next_fingerprint = Self::notify_fingerprint_for(&next, this.history_show_tags);
             let changed = next_fingerprint != this.notify_fingerprint;
+            // Only the selection moved: the rows and their refs are unchanged.
+            let selection_only = changed
+                && Self::content_fingerprint_for(&this.state, this.history_show_tags)
+                    == Self::content_fingerprint_for(&next, this.history_show_tags);
             let switched_repo = this.state.active_repo != next.active_repo;
             let previous_repo = this.active_repo();
             let next_repo = next
@@ -996,7 +1017,11 @@ impl HistoryView {
             }
             if changed {
                 this.notify_fingerprint = next_fingerprint;
-                this.dismiss_history_refs_hover(cx);
+                if selection_only {
+                    this.dismiss_history_refs_hover_after_state_change(cx);
+                } else {
+                    this.dismiss_history_refs_hover(cx);
+                }
                 cx.notify();
             } else if signatures_changed
                 || find_changed

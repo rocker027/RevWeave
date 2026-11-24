@@ -399,6 +399,7 @@ mod mark_menu;
 mod navigation;
 pub(super) mod refresh;
 mod refs_drag;
+mod refs_hover_clicks;
 mod refs_overflow;
 mod reveal;
 mod row_tooltips;

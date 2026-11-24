@@ -48,6 +48,31 @@ impl HistoryView {
         });
     }
 
+    /// Like [`Self::dismiss_history_refs_hover`], for a state change that only
+    /// moved the selection: the refs card stays when that is the selection its
+    /// own click made. Any change to the rows or refs still retracts it.
+    pub(super) fn dismiss_history_refs_hover_after_state_change(
+        &self,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let selected = self
+            .active_repo()
+            .and_then(|repo| Some((repo.id, repo.history_state.selected_commit.clone()?)));
+        let root_view = self.root_view.clone();
+        cx.defer(move |cx| {
+            let _ = root_view.update(cx, |root, cx| {
+                if root
+                    .history_refs_hover_host
+                    .read(cx)
+                    .kept_by_card_selection(selected.as_ref())
+                {
+                    return;
+                }
+                root.dismiss_history_refs_menus(cx);
+            });
+        });
+    }
+
     fn history_view_inner(
         &mut self,
         window: &mut Window,
@@ -291,47 +316,58 @@ impl HistoryView {
                     return;
                 }
 
-                let handled = !mods.control
-                    && !mods.alt
-                    && !mods.platform
-                    && !mods.function
-                    && match (key, mods.shift) {
-                        ("up" | "k", true) => this.history_select_on_branch(-1, cx),
-                        ("down" | "j", true) => this.history_select_on_branch(1, cx),
-                        ("up" | "k", false) => this.history_select_adjacent_commit(-1, cx),
-                        ("down" | "j", false) => this.history_select_adjacent_commit(1, cx),
-                        ("pageup", false) => this.history_select_page(-1, cx),
-                        ("pagedown", false) => this.history_select_page(1, cx),
-                        ("home", false) => this.history_select_edge(-1, cx),
-                        ("end", false) => this.history_select_edge(1, cx),
-                        ("enter", false) => {
-                            if !this.history_open_selected_worktree(window, cx) {
+                // macOS's Command+Up/Down reach the first and last row, as
+                // Home/End do (and as in GitKraken).
+                let command_edge = cfg!(target_os = "macos")
+                    && mods.platform
+                    && mods.number_of_modifiers() == 1
+                    && match key {
+                        "up" => this.history_select_edge(-1, cx),
+                        "down" => this.history_select_edge(1, cx),
+                        _ => false,
+                    };
+                let handled = command_edge
+                    || !mods.control
+                        && !mods.alt
+                        && !mods.platform
+                        && !mods.function
+                        && match (key, mods.shift) {
+                            ("up" | "k", true) => this.history_select_on_branch(-1, cx),
+                            ("down" | "j", true) => this.history_select_on_branch(1, cx),
+                            ("up" | "k", false) => this.history_select_adjacent_commit(-1, cx),
+                            ("down" | "j", false) => this.history_select_adjacent_commit(1, cx),
+                            ("pageup", false) => this.history_select_page(-1, cx),
+                            ("pagedown", false) => this.history_select_page(1, cx),
+                            ("home", false) => this.history_select_edge(-1, cx),
+                            ("end", false) => this.history_select_edge(1, cx),
+                            ("enter", false) => {
+                                if !this.history_open_selected_worktree(window, cx) {
+                                    crate::view::review_navigation::defer(
+                                        this.root_view.clone(),
+                                        crate::view::review_navigation::ReviewNavigation::Files {
+                                            from_graph: true,
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                }
+                                true
+                            }
+                            ("escape", false) if this.history_find_is_open() => {
+                                this.close_history_find(window, cx);
+                                true
+                            }
+                            ("escape", false) => {
                                 crate::view::review_navigation::defer(
                                     this.root_view.clone(),
-                                    crate::view::review_navigation::ReviewNavigation::Files {
-                                        from_graph: true,
-                                    },
+                                    crate::view::review_navigation::ReviewNavigation::WorkingCopy,
                                     window,
                                     cx,
                                 );
+                                true
                             }
-                            true
-                        }
-                        ("escape", false) if this.history_find_is_open() => {
-                            this.close_history_find(window, cx);
-                            true
-                        }
-                        ("escape", false) => {
-                            crate::view::review_navigation::defer(
-                                this.root_view.clone(),
-                                crate::view::review_navigation::ReviewNavigation::WorkingCopy,
-                                window,
-                                cx,
-                            );
-                            true
-                        }
-                        _ => false,
-                    };
+                            _ => false,
+                        };
 
                 if handled {
                     cx.stop_propagation();
@@ -379,6 +415,64 @@ impl HistoryView {
             return false;
         }
         click.up.click_count == 2 && first == Some(clicked)
+    }
+
+    /// Run a branch label's double-click: check it out, open the worktree that
+    /// already has it, or track a remote branch. The graph's chips and the refs
+    /// hover card share this. Returns false when the branch has no activation.
+    pub(in crate::view) fn activate_history_branch(
+        &mut self,
+        repo_id: RepoId,
+        target: &BranchMenuTarget,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
+        let Some(activation) = self
+            .active_repo()
+            .filter(|repo| repo.id == repo_id)
+            .and_then(|repo| crate::view::rows::history_double_click_branch(repo, target))
+        else {
+            return false;
+        };
+        match activation {
+            crate::view::rows::HistoryBranchActivation::Checkout(name) => {
+                self.store.dispatch(Msg::CheckoutBranch { repo_id, name });
+            }
+            crate::view::rows::HistoryBranchActivation::Open(path) => {
+                crate::app::open_repository_from_view(cx, window.window_handle().window_id(), path);
+            }
+            crate::view::rows::HistoryBranchActivation::CreateTracking {
+                remote,
+                branch,
+                local_branch,
+            } => {
+                self.store.dispatch(Msg::CheckoutRemoteBranch {
+                    repo_id,
+                    remote,
+                    branch,
+                    local_branch,
+                    mode: gitcomet_core::services::CheckoutRemoteBranchMode::Create,
+                });
+            }
+            crate::view::rows::HistoryBranchActivation::PromptForTrackingName {
+                remote,
+                branch,
+            } => {
+                self.open_popover_at(
+                    PopoverKind::CheckoutRemoteBranchPrompt {
+                        repo_id,
+                        remote,
+                        branch,
+                    },
+                    position,
+                    window,
+                    cx,
+                );
+            }
+        }
+        cx.notify();
+        true
     }
 
     pub(in crate::view) fn open_history_worktree_row(

@@ -736,6 +736,18 @@ fn copy_branch_name_entries_follow_the_commits_branches(cx: &mut gpui::TestAppCo
         ]
     );
 
+    // Many branches: the copies move into each branch's own group.
+    assert_eq!(
+        copy_entries(
+            cx,
+            ["feat/a", "feat/b", "feat/c", "feat/d"]
+                .map(|name| local(name, &commit_id))
+                .to_vec(),
+            Vec::new(),
+        ),
+        Vec::<(String, String)>::new()
+    );
+
     // Only a remote branch: copy it the way its own menu does.
     assert_eq!(
         copy_entries(cx, Vec::new(), vec![remote("feat/x", &commit_id)]),
@@ -746,5 +758,90 @@ fn copy_branch_name_entries_follow_the_commits_branches(cx: &mut gpui::TestAppCo
     assert_eq!(
         copy_entries(cx, vec![local("main", &other_commit)], Vec::new()),
         Vec::<(String, String)>::new()
+    );
+}
+
+/// A busy commit's menu lists the checked-out branch's group first, as the
+/// graph's chips and refs card do, instead of in name order.
+#[gpui::test]
+fn commit_menu_lists_the_checked_out_branch_first(cx: &mut gpui::TestAppContext) {
+    let (store, events) = AppStore::new_test(Arc::new(TestBackend));
+    let (view, cx) =
+        cx.add_window_view(|window, cx| GitCometView::new(store, events, None, window, cx));
+    let repo_id = RepoId(1);
+    let commit_id = CommitId("0123456789abcdef".into());
+    let local = |name: &str| Branch {
+        name: name.into(),
+        target: commit_id.clone(),
+        upstream: None,
+        divergence: None,
+    };
+    cx.update(|_window, app| {
+        view.update(app, |this, cx| {
+            let mut repo = open_repo(repo_id, "/tmp/commit-menu-head-first");
+            repo.head_branch = Loadable::Ready("main".into());
+            repo.branches = Loadable::Ready(Arc::new(vec![
+                local("feat/a"),
+                local("main"),
+                local("menu-a"),
+                local("menu-b"),
+            ]));
+            let state = Arc::new(AppState {
+                repos: vec![repo],
+                active_repo: Some(repo_id),
+                ..AppState::test_default()
+            });
+            this.state = Arc::clone(&state);
+            this.ui_model
+                .update(cx, |model, cx| model.set_state(state, cx));
+            cx.notify();
+        });
+    });
+    let menu_labels = |cx: &mut gpui::VisualTestContext, expanded: Option<&str>| {
+        cx.update(|_window, app| {
+            view.update(app, |this, cx| {
+                this.popover_host.update(cx, |host, cx| {
+                    host.expanded_history_ref =
+                        expanded.map(|name| HistoryMenuRef::Branch(BranchMenuTarget::local(name)));
+                    host.context_menu_model(
+                        &PopoverKind::CommitMenu {
+                            repo_id,
+                            commit_id: commit_id.clone(),
+                            refs: CommitMenuRefs::All,
+                        },
+                        cx,
+                    )
+                })
+            })
+        })
+        .expect("expected a commit context menu model")
+        .entry_labels()
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>()
+    };
+    let labels = menu_labels(cx, None);
+    assert_eq!(
+        labels
+            .iter()
+            .filter(|label| label.starts_with("Local branch"))
+            .collect::<Vec<_>>(),
+        [
+            "Local branch main",
+            "Local branch feat/a",
+            "Local branch menu-a",
+            "Local branch menu-b"
+        ]
+    );
+    // Four branches put "Copy branch name" in each branch's own group only.
+    assert!(
+        !labels
+            .iter()
+            .any(|label| label.starts_with("Copy branch name"))
+    );
+    let expanded = menu_labels(cx, Some("menu-a"));
+    assert!(
+        expanded.iter().any(|label| label == "Copy branch name"),
+        "the expanded group still copies its branch: {expanded:?}"
     );
 }

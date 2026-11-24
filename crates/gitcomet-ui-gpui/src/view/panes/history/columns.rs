@@ -393,7 +393,7 @@ pub(in crate::view) fn history_column_resize_state(
     let ui_scale_percent = scale.percent();
     let visible_columns =
         history_visible_columns_for_layout(available_width, layout, ui_scale_percent);
-    let params = history_column_resize_drag_params(
+    let columns_params = history_column_resize_drag_params(
         handle,
         HistoryColumnDragLayout {
             show_author: visible_columns.0,
@@ -403,6 +403,27 @@ pub(in crate::view) fn history_column_resize_state(
         },
         scale,
     );
+    // The optional columns appear when room allows, so narrowing the branch or
+    // graph column can let one in. Widening it again must push that column out
+    // rather than stop where it begins: those two handles are bounded by the
+    // required columns only.
+    let params = match handle {
+        HistoryColResizeHandle::Branch | HistoryColResizeHandle::Graph => {
+            history_column_resize_drag_params(
+                handle,
+                HistoryColumnDragLayout {
+                    show_author: false,
+                    show_date: false,
+                    show_sha: false,
+                    ..layout
+                },
+                scale,
+            )
+        }
+        HistoryColResizeHandle::Author
+        | HistoryColResizeHandle::Date
+        | HistoryColResizeHandle::Sha => columns_params,
+    };
     HistoryColResizeState {
         handle,
         start_x,
@@ -415,6 +436,12 @@ pub(in crate::view) fn history_column_resize_state(
         bounds_available_width: available_width,
         max_width: history_column_resize_max_width(params, available_width, ui_scale_percent),
         visible_columns,
+        columns_max_width: history_column_resize_max_width(
+            columns_params,
+            available_width,
+            ui_scale_percent,
+        ),
+        columns_other_fixed_width: columns_params.other_fixed_width,
     }
 }
 
@@ -427,7 +454,7 @@ pub(in crate::view) fn history_resize_state_visible_columns(
     if available <= px(0.0)
         || state.bounds_available_width != available
         || state.current_width < state.min_width
-        || state.current_width > state.max_width
+        || state.current_width > state.columns_max_width
     {
         return None;
     }
@@ -466,6 +493,14 @@ pub(in crate::view) fn history_column_drag_clamped_width_for_state(
         };
         state.max_width =
             history_column_resize_max_width(params, available_width, ui_scale_percent);
+        state.columns_max_width = history_column_resize_max_width(
+            HistoryColumnResizeDragParams {
+                other_fixed_width: state.columns_other_fixed_width,
+                ..params
+            },
+            available_width,
+            ui_scale_percent,
+        );
         state.bounds_available_width = available_width;
     }
 

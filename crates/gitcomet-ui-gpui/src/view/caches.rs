@@ -1384,14 +1384,16 @@ pub(in crate::view) fn history_ref_items_from_displayed_refs(
         return branch_items;
     }
 
+    // Branches lead, the checked-out one first, as in the graph's chips and
+    // GitKraken's ref list; tags follow them.
     let mut items = Vec::with_capacity(tag_names.len() + branch_items.len());
+    items.extend(branch_items.iter().cloned());
     items.extend(tag_names.iter().map(|tag| HistoryRefListItem {
         text: tag.clone(),
         kind: HistoryRefListItemKind::Tag {
             name: tag.as_ref().to_string(),
         },
     }));
-    items.extend(branch_items.iter().cloned());
     items.into()
 }
 

@@ -1578,3 +1578,95 @@ fn chip_lane_activation_respects_lifetime_and_selected_rows() {
     assert!(!HistoryRowVisual::new(theme, &row, 15, None, false, background).refs_active());
     assert!(HistoryRowVisual::new(theme, &row, 15, None, true, background).refs_active());
 }
+
+/// A commit with many refs keeps its checked-out branch marked in a narrow
+/// column, as GitKraken's `✓ main +10` does: the chip sheds its worktree icon
+/// for its name, then its name, and folds into "+N" only when not even the
+/// check fits.
+#[gpui::test]
+fn the_checked_out_branch_keeps_its_check_as_the_column_narrows(cx: &mut gpui::TestAppContext) {
+    let window_handle = cx.add_window(|_, _| gpui::Empty);
+    cx.update_window(window_handle.into(), |_, window, _| {
+        let theme = AppTheme::gitcomet_dark();
+        let commit = CommitId("tip".into());
+        let mut chips = vec![branch_chip("main", true, &[(BranchSection::Local, "main")])];
+        chips.extend(
+            ["menu-a", "menu-b", "menu-c", "menu-d", "menu-e"]
+                .map(|name| branch_chip(name, false, &[(BranchSection::Local, name)])),
+        );
+        let tags = [HistoryTextVm::new("demo-multi-ref".into())];
+        let worktrees = [test_worktree("main", "tip")];
+        let style = window.text_style();
+        let mut layout = |width: f32| {
+            layout_history_ref_chips(
+                theme,
+                test_row_visual(theme),
+                Bounds::new(point(px(0.0), px(0.0)), size(px(width), px(28.0))),
+                RepoId(1),
+                &commit,
+                &tags,
+                &chips,
+                &worktrees,
+                None,
+                None,
+                &style,
+                px(11.0),
+                px(16.0),
+                window,
+            )
+        };
+
+        let wide = layout(600.0);
+        assert_eq!(wide.chips[0].shaped.text, "main");
+        assert_eq!(
+            wide.chips[0].icons.as_slice(),
+            [
+                HistoryBranchChipIcon::Check,
+                HistoryBranchChipIcon::Worktree
+            ]
+        );
+
+        let mut named_check_only = false;
+        let mut bare_check = false;
+        let mut folded_widths = Vec::new();
+        for width in 1..=200 {
+            let refs = layout(width as f32);
+            assert_eq!(refs.shown + refs.hidden, 7);
+            if refs.shown == 0 {
+                // A lone "+N" may be clipped, by design: it is still the row's
+                // refs marker and hover target.
+                folded_widths.push(width);
+                continue;
+            }
+            // With a named chip shown, every chip (not the clamped refs
+            // bounds) stays in the column, "+N" included.
+            for chip in &refs.chips {
+                assert!(
+                    chip.bounds.right() <= px(width as f32),
+                    "{width}px: a chip runs past the column"
+                );
+            }
+            let head = &refs.chips[0];
+            assert_eq!(head.icons.first(), Some(&HistoryBranchChipIcon::Check));
+            assert_ne!(
+                head.shaped.text.as_ref(),
+                "\u{2026}",
+                "{width}px: a bare ellipsis names nothing; show the check alone"
+            );
+            if head.icons.as_slice() == [HistoryBranchChipIcon::Check] {
+                named_check_only |= head.shaped.text == "main";
+                bare_check |= head.shaped.text.is_empty();
+            }
+        }
+        assert!(named_check_only, "the name outranks the worktree icon");
+        assert!(
+            bare_check,
+            "a column too narrow for the name keeps the check"
+        );
+        // Only columns too narrow for a check chip beside "+6" fold it.
+        let fold_limit = folded_widths.iter().copied().max().unwrap_or(0);
+        assert_eq!(folded_widths, (1..=fold_limit).collect::<Vec<_>>());
+        assert!(fold_limit < 60, "{fold_limit}px still folds the check");
+    })
+    .expect("history canvas test window should stay open");
+}

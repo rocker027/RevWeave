@@ -421,6 +421,10 @@ pub(super) struct HistoryColResizeState {
     pub(super) bounds_available_width: Pixels,
     pub(super) max_width: Pixels,
     pub(super) visible_columns: (bool, bool, bool),
+    /// The widest the dragged column can grow while `visible_columns` still
+    /// fit; past it the optional columns re-fit (see `history_column_resize_state`).
+    pub(super) columns_max_width: Pixels,
+    pub(super) columns_other_fixed_width: Pixels,
 }
 
 struct ResizeDragGhost;

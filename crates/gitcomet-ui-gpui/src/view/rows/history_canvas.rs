@@ -210,6 +210,28 @@ fn shape_truncated_line_cached(
     )
 }
 
+/// The untruncated width of a checked-out branch's bold chip label.
+fn history_head_label_width(
+    window: &mut Window,
+    base_style: &gpui::TextStyle,
+    font_size: Pixels,
+    text: &HistoryTextVm,
+) -> Pixels {
+    let mut style = base_style.clone();
+    style.font_weight = gpui::FontWeight::BOLD;
+    shape_truncated_line_cached(
+        window,
+        &style,
+        font_size,
+        text.shared(),
+        text.text_hash(),
+        px(100_000.0),
+        gpui::rgba(0x00000000),
+        None,
+    )
+    .width
+}
+
 #[allow(clippy::too_many_arguments)]
 fn shape_truncated_line_cached_from(
     window: &mut Window,
@@ -1543,18 +1565,34 @@ fn layout_history_ref_chips(
         } else {
             px(0.0)
         };
-        let icons = match &entry {
+        let mut icons = match &entry {
             ChipEntry::Tag(_) => smallvec::smallvec![HistoryBranchChipIcon::Tag],
             ChipEntry::Branch(chip, checked_out) => history_branch_chip_icons(chip, *checked_out),
         };
-        let icons_width = history_branch_chip_icon_width(
-            icons.as_slice(),
-            branch_icon_size,
-            branch_combined_icon_size,
-            branch_text_icon_gap,
-            branch_icon_gap,
-        );
-        let max_text_w = content_bounds.right() - x - reserve - chip_pad_x * 2.0 - icons_width;
+        let icons_width_of = |icons: &[HistoryBranchChipIcon]| {
+            history_branch_chip_icon_width(
+                icons,
+                branch_icon_size,
+                branch_combined_icon_size,
+                branch_text_icon_gap,
+                branch_icon_gap,
+            )
+        };
+        let text_room = content_bounds.right() - x - reserve - chip_pad_x * 2.0;
+        let mut max_text_w = text_room - icons_width_of(&icons);
+        // The checked-out branch leads with its check. When the column is
+        // tight it gives up its other icons for its name, then its name, and
+        // folds into "+N" only when not even the check fits (GitKraken keeps
+        // the current branch marked, too).
+        let check_led = shown == 0 && icons.first() == Some(&HistoryBranchChipIcon::Check);
+        if check_led
+            && icons.len() > 1
+            && let ChipEntry::Branch(chip, _) = &entry
+            && history_head_label_width(window, base_style, xxs_font, &chip.text) > max_text_w
+        {
+            icons.truncate(1);
+            max_text_w = text_room - icons_width_of(&icons);
+        }
         // Later chips need enough room to be legible;
         // otherwise fold the remainder into the "+N" chip
         // instead of painting an "…x" stub.
@@ -1563,9 +1601,17 @@ fn layout_history_ref_chips(
         } else {
             scaled_px(28.0)
         };
-        if max_text_w < needed_text_w {
+        // A check alone needs no gap before a name.
+        let check_only =
+            check_led && max_text_w < needed_text_w && max_text_w + branch_text_icon_gap >= px(0.0);
+        if max_text_w < needed_text_w && !check_only {
             break;
         }
+        if check_only {
+            icons.truncate(1);
+        }
+        let max_text_w = if check_only { px(0.0) } else { max_text_w };
+        let icons_width = icons_width_of(&icons);
 
         let style_kind = match &entry {
             ChipEntry::Tag(_) => HistoryChipStyleKind::Tag,
@@ -1626,6 +1672,36 @@ fn layout_history_ref_chips(
             continue;
         }
 
+        // A name cut down to its ellipsis tells nothing; keep the check alone.
+        let check_only = check_only
+            || (check_led
+                && shaped
+                    .text
+                    .chars()
+                    .all(|ch| ch == '\u{2026}' || ch.is_whitespace()));
+        if check_only {
+            icons.truncate(1);
+        }
+        let shaped = if check_only {
+            shape_truncated_line_cached(
+                window,
+                base_style,
+                xxs_font,
+                &SharedString::default(),
+                fx_hash_str(""),
+                px(0.0),
+                visual.text,
+                None,
+            )
+        } else {
+            shaped
+        };
+        // A check alone has no name to keep apart from it.
+        let icons_width = if check_only {
+            icons_width_of(&icons) - branch_text_icon_gap
+        } else {
+            icons_width
+        };
         let chip_w = shaped.width + icons_width + chip_pad_x * 2.0;
         let chip_bounds = Bounds::new(point(x, chip_y), size(chip_w, chip_height));
         chips.push(HistoryRefChipPaint {
@@ -1992,6 +2068,9 @@ pub(super) fn history_commit_row_canvas(
             let branch_bounds = column_layout.branch;
             let graph_bounds = column_layout.graph;
             let mut summary_bounds = column_layout.summary;
+            // The whole message cell, before worktree chips narrow it: the
+            // message card keeps to this, not to the narrowed text area.
+            let message_cell_bounds = column_layout.summary;
             let author_bounds = column_layout.author;
             let date_bounds = column_layout.date;
             let sha_bounds = column_layout.sha;
@@ -2909,6 +2988,7 @@ pub(super) fn history_commit_row_canvas(
                         author: hover_author.clone(),
                         when: hover_when.clone(),
                         source_bounds: message_hover_bounds,
+                        cell_bounds: message_cell_bounds,
                         source_pointer_x: event.position.x,
                     };
                     let view = view.clone();
