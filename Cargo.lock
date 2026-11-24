@@ -2391,7 +2391,7 @@ checksum = "1033caf0b349c518623b5396bfb2cf0bddf44f0306d543a250e5743297aafd10"
 
 [[package]]
 name = "gitcomet"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "embed-resource",
  "gitcomet-app",
@@ -2409,7 +2409,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-app"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "clap",
  "gitcomet-core",
@@ -2434,7 +2434,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-base"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gitcomet-base",
  "rustix",
@@ -2446,7 +2446,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-conflict-resolver"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gitcomet-core",
  "gitcomet-text",
@@ -2459,7 +2459,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-core"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "chardetng",
  "encoding_rs",
@@ -2489,7 +2489,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-diagrams"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "criterion",
  "gitcomet-base",
@@ -2504,7 +2504,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-difftastic"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "difftastic",
  "gitcomet-core",
@@ -2514,7 +2514,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-extension-api"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gitcomet-core",
  "gitcomet-state",
@@ -2559,11 +2559,11 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-fonts"
-version = "1.1.1"
+version = "1.1.2"
 
 [[package]]
 name = "gitcomet-fs-watch"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "dispatch2",
  "libc",
@@ -2576,7 +2576,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-git-gix"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "crc32fast",
  "filetime",
@@ -2602,7 +2602,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-markdown"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gitcomet-core",
  "gitcomet-diagrams",
@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-perf"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2625,7 +2625,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-state"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gitcomet-base",
  "gitcomet-core",
@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-syntax"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "dekobon-tree-sitter-groovy",
  "gitcomet-base",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-text"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "gpui_ce_shared_string",
  "gpui_ce_sum_tree",
@@ -2769,7 +2769,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-tree-sitter-alloc"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "ctor",
  "rustfs-mimalloc-sys",
@@ -2779,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-ui-gpui"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -2831,7 +2831,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-ui-kit"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "fontdb",
  "gitcomet-base",
@@ -2859,7 +2859,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-ui-media"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "fast_image_resize",
  "gitcomet-base",
@@ -2876,7 +2876,7 @@ dependencies = [
 
 [[package]]
 name = "gitcomet-ui-terminal"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "alacritty_terminal",
  "gitcomet-base",
