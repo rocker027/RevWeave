@@ -578,7 +578,15 @@ impl HistoryView {
         } else {
             self.ensure_history_list_plan()
         };
-        let anchor = match old_plan.row_at(old_top) {
+        // At the very top the viewport follows the newest rows, so commits and
+        // worktree rows a refresh inserts above stay visible -- the same rule the
+        // non-indexed path applies in `sync_history_viewport`.
+        let old_row = if old_top == 0 && within <= 0.0 {
+            None
+        } else {
+            old_plan.row_at(old_top)
+        };
+        let anchor = match old_row {
             Some(
                 HistoryListRow::Commit { visible_ix }
                 | HistoryListRow::WorktreeUncommitted { visible_ix, .. },
@@ -599,7 +607,7 @@ impl HistoryView {
                 }),
             _ => None,
         };
-        let synthetic_path = match old_plan.row_at(old_top) {
+        let synthetic_path = match old_row {
             Some(HistoryListRow::WorktreeUncommitted { worktree_ix, .. }) => {
                 let dirty = if self.indexed.presentation.is_some() {
                     Some(self.indexed.worktrees.as_slice())
@@ -670,7 +678,7 @@ impl HistoryView {
                 let Some(
                     HistoryListRow::Commit { visible_ix }
                     | HistoryListRow::WorktreeUncommitted { visible_ix, .. },
-                ) = old_plan.row_at(old_top)
+                ) = old_row
                 else {
                     return None;
                 };

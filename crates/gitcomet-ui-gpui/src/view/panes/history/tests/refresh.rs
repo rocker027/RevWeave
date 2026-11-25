@@ -1224,6 +1224,40 @@ fn indexed_history_real_wheel_and_thumb_keep_position_during_refresh(
 }
 
 #[gpui::test]
+fn indexed_history_at_the_top_follows_new_commits_on_refresh(cx: &mut gpui::TestAppContext) {
+    let (index, commits) = indexed_fixture(5000);
+    let (view, cx, mut state, store) = mount(
+        cx,
+        Arc::new(LogPage {
+            commits: commits[..200].to_vec(),
+            next_cursor: None,
+        }),
+    );
+    install_index(&mut state, index);
+    store.replace_snapshot_for_test(Arc::new(state.clone()));
+    set_history_view_state_for_tests(cx, &view, Arc::new(state.clone()));
+    wait_until(cx, "indexed snapshot", |cx| {
+        logical_top(cx, &view).2 == 5000
+    });
+    assert_eq!(logical_top(cx, &view), (0, 0.0, 5000));
+
+    // A refresh (e.g. on returning to the foreground) adds ten newer commits.
+    let (next, next_commits) = indexed_fixture(5010);
+    install_index(&mut state, next);
+    store.replace_snapshot_for_test(Arc::new(state.clone()));
+    set_history_view_state_for_tests(cx, &view, Arc::new(state));
+    wait_until(cx, "new indexed snapshot", |cx| {
+        logical_top(cx, &view).2 == 5010
+    });
+    assert_eq!(
+        logical_top(cx, &view),
+        (0, 0.0, 5010),
+        "a viewport at the top must keep showing the newest commits"
+    );
+    assert_eq!(top(cx, &view).0, next_commits[0].id);
+}
+
+#[gpui::test]
 fn indexed_history_bootstrap_preserves_worktree_row_anchor(cx: &mut gpui::TestAppContext) {
     let (index, commits) = indexed_fixture(5000);
     let (view, cx, mut state, store) = mount(
