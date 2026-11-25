@@ -3207,7 +3207,7 @@ impl Render for DetailsPaneView {
                     window.focus(&this.details_focus, cx);
                 }
             }))
-            .child(self.commit_details_view(window, cx))
+            .child(self.commit_details_view(cx))
             .child(StatusSectionResizeTracker { view: cx.entity() })
     }
 }

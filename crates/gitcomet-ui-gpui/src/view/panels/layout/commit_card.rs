@@ -1,26 +1,15 @@
 //! The commit card at the top of the commit details: author, dates and the
-//! short SHA on one row, and the parent with the refs on this commit below.
+//! short SHA on one row, and the parent with a `+N` chooser for the refs on
+//! this commit beside it.
 
 use super::*;
 use crate::localization::text;
 use crate::theme::with_alpha;
-use crate::view::branch_sidebar::BranchMenuTarget;
 use gitcomet_core::domain::CommitDetails;
 use std::cell::Cell;
 use std::rc::Rc;
 
-const MAX_REF_PILLS: usize = 4;
 const CHIP_HEIGHT_PX: f32 = 22.0;
-/// The narrowest a ref badge gets before it wraps: badges pack onto a line
-/// at this width, then share what the line has left up to their whole names.
-const REF_PILL_MIN_WIDTH_PX: f32 = 100.0;
-
-// A badge's parts. The styles use these, and so does the natural width a
-// badge grows to, which flex layout cannot read off the content itself.
-const REF_LABEL_PAD_X: gpui::Rems = gpui::rems(0.5);
-const REF_LABEL_GAP_PX: f32 = 6.0;
-const REF_ICON_PX: f32 = 14.0;
-const REF_TEXT_PX: f32 = 14.0;
 const CHIP_BORDER_PX: f32 = 1.0;
 const CHIP_DIVIDER_PX: f32 = 1.0;
 const CHIP_CHEVRON_PAD_X: gpui::Rems = gpui::rems(0.25);
@@ -71,18 +60,6 @@ impl ShaChip {
     }
 }
 
-enum RefPillKind {
-    /// Opens the sidebar's branch menu from its chevron.
-    Branch(BranchMenuTarget),
-    Tag(String),
-}
-
-struct RefPill {
-    kind: RefPillKind,
-    /// The checked-out branch, tinted like the sidebar's HEAD row.
-    is_head: bool,
-}
-
 /// What a chip's chevron opens, anchored under the whole chip. `invoker`
 /// also names the chevron element.
 struct ChipMenu {
@@ -93,52 +70,25 @@ struct ChipMenu {
 }
 
 impl DetailsPaneView {
-    /// Branches and tags that point at `commit`: local first, then remote, then tags.
-    fn commit_ref_pills(&self, commit: &CommitId) -> Vec<RefPill> {
+    /// How many branches (local and remote, hidden remotes included) and
+    /// tags point at `commit`: what the details chooser lists.
+    fn commit_ref_count(&self, commit: &CommitId) -> usize {
         let Some(repo) = self.active_repo() else {
-            return Vec::new();
+            return 0;
         };
-        let mut pills = Vec::new();
-        let head = match &repo.head_branch {
-            Loadable::Ready(head) => Some(head.as_str()),
-            _ => None,
+        let local = match &repo.branches {
+            Loadable::Ready(branches) => branches.iter().filter(|b| &b.target == commit).count(),
+            _ => 0,
         };
-        if let Loadable::Ready(branches) = &repo.branches {
-            pills.extend(
-                branches
-                    .iter()
-                    .filter(|branch| &branch.target == commit)
-                    .map(|branch| RefPill {
-                        is_head: head == Some(branch.name.as_str()),
-                        kind: RefPillKind::Branch(BranchMenuTarget::local(&branch.name)),
-                    }),
-            );
-        }
-        if let Loadable::Ready(branches) = &repo.remote_branches {
-            pills.extend(
-                branches
-                    .iter()
-                    .filter(|branch| &branch.target == commit)
-                    .map(|branch| RefPill {
-                        kind: RefPillKind::Branch(BranchMenuTarget::remote(
-                            &branch.remote,
-                            &branch.name,
-                        )),
-                        is_head: false,
-                    }),
-            );
-        }
-        if let Loadable::Ready(tags) = &repo.tags {
-            pills.extend(
-                tags.iter()
-                    .filter(|tag| &tag.target == commit)
-                    .map(|tag| RefPill {
-                        kind: RefPillKind::Tag(tag.name.clone()),
-                        is_head: false,
-                    }),
-            );
-        }
-        pills
+        let remote = match &repo.remote_branches {
+            Loadable::Ready(branches) => branches.iter().filter(|b| &b.target == commit).count(),
+            _ => 0,
+        };
+        let tags = match &repo.tags {
+            Loadable::Ready(tags) => tags.iter().filter(|t| &t.target == commit).count(),
+            _ => 0,
+        };
+        local + remote + tags
     }
 
     /// A short SHA whose body runs the chip's click and whose chevron opens
@@ -317,154 +267,13 @@ impl DetailsPaneView {
             )
     }
 
-    /// What [`Self::commit_card_chip`] adds around its body: the border, the
-    /// divider and the chevron.
-    fn commit_card_chip_chrome_width(&self, window: &Window) -> Pixels {
-        let rem = window.rem_size();
-        px(CHIP_BORDER_PX) * 2.0
-            + px(CHIP_DIVIDER_PX)
-            + CHIP_CHEVRON_PAD_X.to_pixels(rem) * 2.0
-            + self.ui_scale().px(CHIP_CHEVRON_ICON_PX)
-    }
-
-    /// A ref with the sidebar's icon and colours and the HEAD tint. A branch
-    /// is a chip whose chevron opens the sidebar's branch menu; a tag is a
-    /// plain pill.
-    ///
-    /// Badges pack onto a line at [`REF_PILL_MIN_WIDTH_PX`], so as many share
-    /// it as fit, and then grow into the space the line has left, each up to
-    /// its whole name. A name that still does not fit keeps the part after
-    /// its last `/`, as the history graph's ref chips do, and shows in full
-    /// in a tooltip.
-    fn commit_card_ref_pill(
-        &self,
-        pill: RefPill,
-        repo_id: RepoId,
-        current: bool,
-        window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) -> Div {
-        let theme = self.theme;
-        let ui_scale = self.ui_scale();
-        let secondary = theme.colors.foreground.secondary;
-        let (icon, label_color, ref_kind) = match &pill.kind {
-            RefPillKind::Branch(BranchMenuTarget::Local { .. }) => (
-                "icons/git_branch.svg",
-                theme.colors.foreground.primary,
-                "local",
-            ),
-            RefPillKind::Branch(BranchMenuTarget::Remote { .. }) => {
-                ("icons/cloud.svg", secondary, "remote")
-            }
-            RefPillKind::Tag(_) => ("icons/tag.svg", secondary, "tag"),
-        };
-        let icon_color = if pill.is_head {
-            theme.colors.accent.foreground
-        } else {
-            secondary
-        };
-        let head_tint = with_alpha(
-            theme.colors.accent.foreground,
-            if theme.is_dark { 0.18 } else { 0.12 },
-        );
-        let name: SharedString = match &pill.kind {
-            RefPillKind::Branch(target) => target.display_name(),
-            RefPillKind::Tag(name) => name.clone(),
-        }
-        .into();
-        let ref_key = format!("{ref_kind}_{name}");
-        // `TruncatedText` shapes its line in a layout-time closure, outside
-        // the label's text style, so the UI font is named on it and the
-        // natural width is measured with that same font.
-        let font_family: SharedString = crate::font_preferences::current_ui_font(cx).family;
-        let text_size = theme.ui_text(REF_TEXT_PX);
-        let text_width = {
-            let font_size = text_size.to_pixels(window.rem_size());
-            let style = gpui::TextStyle {
-                font_family: font_family.clone(),
-                font_size: font_size.into(),
-                ..Default::default()
-            };
-            window
-                .text_system()
-                .shape_line(name.clone(), font_size, &[style.to_run(name.len())])
-                .width
-        };
-        let label_width = REF_LABEL_PAD_X.to_pixels(window.rem_size()) * 2.0
-            + ui_scale.px(REF_ICON_PX)
-            + px(REF_LABEL_GAP_PX)
-            + text_width;
-        // Basis and minimum at the packing width; grown at most to the whole
-        // name, with a pixel to spare so rounding never cuts its last glyph.
-        let badge_selector = format!("commit_card_ref_badge_{name}");
-        let sized = move |badge: Div, natural: Pixels| {
-            let natural = natural.ceil() + px(1.0);
-            let packed = natural.min(ui_scale.px(REF_PILL_MIN_WIDTH_PX));
-            badge
-                .debug_selector(move || badge_selector)
-                .flex_grow(1.0)
-                .flex_shrink(1.0)
-                .flex_basis(packed)
-                .min_w(packed)
-                .max_w(natural)
-        };
-        let label = div()
-            .debug_selector({
-                let name = name.clone();
-                move || format!("commit_card_ref_{name}")
-            })
-            .flex()
-            .items_center()
-            .gap(px(REF_LABEL_GAP_PX))
-            .min_w(px(0.0))
-            .px(REF_LABEL_PAD_X)
-            .h_full()
-            .text_size(text_size)
-            .text_color(label_color)
-            .whitespace_nowrap()
-            .child(svg_icon(icon, icon_color, ui_scale.px(REF_ICON_PX)))
-            .child(
-                components::TruncatedText::new(name.clone(), text_size)
-                    .profile(components::TextTruncationProfile::RefLeaf)
-                    .font_family(font_family)
-                    .id(SharedString::from(format!(
-                        "commit_card_ref_label_{ref_key}"
-                    )))
-                    // Explicit: the line is shaped in a deferred closure that
-                    // never sees the label's `.text_color`.
-                    .text_color(label_color)
-                    .flex(components::TruncatedTextFlex::Shrink)
-                    .full_text_tooltip(self.tooltip_host.clone())
-                    .render(cx),
-            );
-        let RefPillKind::Branch(target) = pill.kind else {
-            return sized(label, label_width)
-                .h(ui_scale.px(CHIP_HEIGHT_PX))
-                .rounded(px(theme.radii.row))
-                .when(pill.is_head, |d| d.bg(head_tint));
-        };
-        let menu = ChipMenu {
-            invoker: format!("commit_card_ref_menu_{ref_key}").into(),
-            kind: PopoverKind::BranchMenu { repo_id, target },
-            tooltip: "Branch actions",
-            enabled: current,
-        };
-        let bg = if pill.is_head {
-            head_tint
-        } else {
-            theme.colors.surface.raised
-        };
-        // Unlike the SHA chips, a branch chip narrows below its whole name;
-        // its label gives way and the chevron stays whole.
-        let natural = label_width + self.commit_card_chip_chrome_width(window);
-        sized(self.commit_card_chip(label, bg, menu, cx), natural)
-    }
-
+    /// The `+N` button listing every branch and tag on the commit, with
+    /// each ref's actions one level down.
     fn commit_card_ref_overflow(
         &self,
         repo_id: RepoId,
         commit_id: CommitId,
-        hidden: usize,
+        count: usize,
         current: bool,
         cx: &mut gpui::Context<Self>,
     ) -> Stateful<Div> {
@@ -476,7 +285,7 @@ impl DetailsPaneView {
         )
         .into();
         let open = self.active_context_menu_invoker.as_ref() == Some(&invoker);
-        components::Button::new(invoker.clone(), format!("+{hidden}"))
+        components::Button::new(invoker.clone(), format!("+{count}"))
             .style(components::ButtonStyle::Solid)
             .end_slot(svg_icon(
                 "icons/chevron_down.svg",
@@ -522,7 +331,6 @@ impl DetailsPaneView {
         sha_matched: bool,
         repo_id: RepoId,
         current: bool,
-        window: &mut Window,
         cx: &mut gpui::Context<Self>,
     ) -> Stateful<Div> {
         let theme = self.theme;
@@ -614,8 +422,7 @@ impl DetailsPaneView {
             .child(author)
             .child(badges);
 
-        let pills = self.commit_ref_pills(&details.id);
-        let hidden = pills.len().saturating_sub(MAX_REF_PILLS);
+        let ref_count = self.commit_ref_count(&details.id);
         let mut bottom = div()
             .flex()
             .flex_wrap()
@@ -645,21 +452,14 @@ impl DetailsPaneView {
                     .child(text(cx, "none (root commit)", "無（根提交）")),
             ),
         };
-        if !pills.is_empty() {
-            bottom = bottom.child(div().w(px(1.0)).h(px(14.0)).bg(theme.colors.stroke.default));
-            for pill in pills.into_iter().take(MAX_REF_PILLS) {
-                bottom =
-                    bottom.child(self.commit_card_ref_pill(pill, repo_id, current, window, cx));
-            }
-            if hidden > 0 {
-                bottom = bottom.child(self.commit_card_ref_overflow(
-                    repo_id,
-                    details.id.clone(),
-                    hidden,
-                    current,
-                    cx,
-                ));
-            }
+        if ref_count > 0 {
+            bottom = bottom.child(self.commit_card_ref_overflow(
+                repo_id,
+                details.id.clone(),
+                ref_count,
+                current,
+                cx,
+            ));
         }
 
         div()

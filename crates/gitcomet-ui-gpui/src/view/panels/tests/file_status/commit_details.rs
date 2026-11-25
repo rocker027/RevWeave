@@ -2474,81 +2474,8 @@ fn commit_card_badges_wrap_below_the_author_when_narrow(cx: &mut gpui::TestAppCo
     );
 }
 
-/// A branch badge's chevron opens the sidebar's menu for that branch; a tag
-/// badge has no menu.
-#[gpui::test]
-fn commit_card_branch_badges_open_the_sidebar_branch_menu(cx: &mut gpui::TestAppContext) {
-    let (view, cx) = commit_card_chip_fixture(cx);
-    let repo_id = gitcomet_state::model::RepoId(41);
-    let target = gitcomet_core::domain::CommitId(CHIP_COMMIT_SHA.into());
-    cx.update(|_window, app| {
-        view.update(app, |this, cx| {
-            let mut state = (*this.state).clone();
-            let repo = state
-                .repos
-                .iter_mut()
-                .find(|repo| repo.id == repo_id)
-                .expect("fixture repo");
-            repo.branches = Loadable::Ready(Arc::new(vec![gitcomet_core::domain::Branch {
-                name: "origin/feature".into(),
-                target: target.clone(),
-                upstream: None,
-                divergence: None,
-            }]));
-            repo.remote_branches =
-                Loadable::Ready(Arc::new(vec![gitcomet_core::domain::RemoteBranch {
-                    remote: "origin".into(),
-                    name: "feature".into(),
-                    target: target.clone(),
-                }]));
-            repo.tags = Loadable::Ready(Arc::new(vec![gitcomet_core::domain::Tag {
-                name: "v1.0".into(),
-                target: target.clone(),
-            }]));
-            push_test_state(this, Arc::new(state), cx);
-        });
-    });
-    draw_and_drain_test_window(cx);
-
-    for (menu, expected) in [
-        (
-            "commit_card_ref_menu_local_origin/feature",
-            crate::view::branch_sidebar::BranchMenuTarget::local("origin/feature"),
-        ),
-        (
-            "commit_card_ref_menu_remote_origin/feature",
-            crate::view::branch_sidebar::BranchMenuTarget::remote("origin", "feature"),
-        ),
-    ] {
-        let bounds = cx.debug_bounds(menu).expect(menu);
-        simulate_counted_click(cx, bounds.center(), 1);
-        draw_and_drain_test_window(cx);
-        let kind =
-            cx.update(|_window, app| crate::view::test_support::popover_kind(view.read(app), app));
-        assert_eq!(
-            kind,
-            Some(PopoverKind::BranchMenu {
-                repo_id,
-                target: expected,
-            }),
-            "{menu}"
-        );
-        cx.update(|_window, app| {
-            assert_eq!(
-                view.read(app).active_context_menu_invoker.as_deref(),
-                Some(menu)
-            );
-            let host = view.read(app).popover_host.clone();
-            host.update(app, |host, cx| host.close_popover(cx));
-        });
-        draw_and_drain_test_window(cx);
-    }
-    assert!(
-        cx.debug_bounds("commit_card_ref_menu_tag_v1.0").is_none(),
-        "a tag badge has no branch menu"
-    );
-}
-
+/// Every ref on the commit sits behind one `+N` chooser beside the parent
+/// SHA, remotes hidden from the graph included.
 #[gpui::test]
 fn commit_card_overflow_opens_refs_including_remotes_hidden_from_graph(
     cx: &mut gpui::TestAppContext,
@@ -2559,6 +2486,11 @@ fn commit_card_overflow_opens_refs_including_remotes_hidden_from_graph(
     let (view, cx) = commit_card_chip_fixture(cx);
     let repo_id = gitcomet_state::model::RepoId(41);
     let target = gitcomet_core::domain::CommitId(CHIP_COMMIT_SHA.into());
+    show_card_branches(cx, &view, &[], 280.0);
+    assert!(
+        cx.debug_bounds("commit_card_ref_overflow").is_none(),
+        "a commit without refs has no chooser"
+    );
     show_card_branches(
         cx,
         &view,
@@ -2566,8 +2498,8 @@ fn commit_card_overflow_opens_refs_including_remotes_hidden_from_graph(
         280.0,
     );
     assert!(
-        cx.debug_bounds("commit_card_ref_overflow").is_none(),
-        "four refs fit without an overflow control"
+        cx.debug_bounds("commit_card_ref_menu_local_main").is_none(),
+        "refs are not listed one by one on the card"
     );
     cx.update(|_window, app| {
         view.update(app, |this, cx| {
@@ -2594,8 +2526,14 @@ fn commit_card_overflow_opens_refs_including_remotes_hidden_from_graph(
     draw_and_drain_test_window(cx);
 
     let overflow = cx.debug_bounds("commit_card_ref_overflow").unwrap();
+    let parent = cx.debug_bounds("commit_card_parent").unwrap();
     let card = cx.debug_bounds("commit_details_card").unwrap();
     assert!(overflow.left() >= card.left() && overflow.right() <= card.right());
+    assert!(
+        overflow.left() >= parent.right()
+            && (overflow.center().y - parent.center().y).abs() < px(2.0),
+        "the chooser sits beside the parent SHA, parent {parent:?}, chooser {overflow:?}"
+    );
     simulate_counted_click(cx, overflow.center(), 1);
     draw_and_drain_test_window(cx);
     let expected = PopoverKind::CommitMenu {
@@ -2634,70 +2572,6 @@ fn commit_card_overflow_opens_refs_including_remotes_hidden_from_graph(
     });
 }
 
-/// A branch name wider than the card ends in an ellipsis inside the card,
-/// chevron included, and hovering it shows the whole name.
-#[gpui::test]
-fn commit_card_long_branch_badges_truncate_inside_the_card(cx: &mut gpui::TestAppContext) {
-    let (view, cx) = commit_card_chip_fixture(cx);
-    let repo_id = gitcomet_state::model::RepoId(41);
-    let target = gitcomet_core::domain::CommitId(CHIP_COMMIT_SHA.into());
-    let branch = "claude/gitcomet-child-processes-with-a-name-far-wider-than-the-card";
-    let remote = format!("origin/{branch}");
-    cx.update(|_window, app| {
-        view.update(app, |this, cx| {
-            this.details_width = px(320.0);
-            let mut state = (*this.state).clone();
-            let repo = state
-                .repos
-                .iter_mut()
-                .find(|repo| repo.id == repo_id)
-                .expect("fixture repo");
-            repo.branches = Loadable::Ready(Arc::new(vec![gitcomet_core::domain::Branch {
-                name: branch.into(),
-                target: target.clone(),
-                upstream: None,
-                divergence: None,
-            }]));
-            repo.remote_branches =
-                Loadable::Ready(Arc::new(vec![gitcomet_core::domain::RemoteBranch {
-                    remote: "origin".into(),
-                    name: branch.into(),
-                    target: target.clone(),
-                }]));
-            push_test_state(this, Arc::new(state), cx);
-        });
-    });
-    draw_and_drain_test_window(cx);
-
-    let card = cx
-        .debug_bounds("commit_details_card")
-        .expect("expected the commit card");
-    for (kind, name) in [("local", branch), ("remote", remote.as_str())] {
-        let label: &'static str = Box::leak(format!("commit_card_ref_{name}").into_boxed_str());
-        let menu: &'static str =
-            Box::leak(format!("commit_card_ref_menu_{kind}_{name}").into_boxed_str());
-        let label_bounds = cx.debug_bounds(label).expect(label);
-        let menu_bounds = cx.debug_bounds(menu).expect(menu);
-        assert!(
-            label_bounds.left() >= card.left() && menu_bounds.right() <= card.right(),
-            "{name}: the badge stays inside the card, card {card:?}, \
-             label {label_bounds:?}, chevron {menu_bounds:?}"
-        );
-        assert!(
-            menu_bounds.size.width > px(0.0),
-            "{name}: the chevron keeps its width, chevron {menu_bounds:?}"
-        );
-
-        cx.simulate_mouse_move(label_bounds.center(), None, gpui::Modifiers::default());
-        crate::view::test_support::wait_for_native_tooltip(cx);
-        assert_eq!(
-            crate::view::test_support::tooltip_text(cx, &view).map(|text| text.to_string()),
-            Some(name.to_string()),
-            "{name}: hovering the truncated badge names the whole branch"
-        );
-    }
-}
-
 /// Shows the branches in `names`, all pointing at the card's commit, in a
 /// details pane `width` wide.
 fn show_card_branches(
@@ -2732,106 +2606,6 @@ fn show_card_branches(
         });
     });
     draw_and_drain_test_window(cx);
-}
-
-/// A branch badge's left and right edges and its top.
-fn branch_badge_bounds(cx: &mut gpui::VisualTestContext, name: &str) -> (Pixels, Pixels, Pixels) {
-    let badge: &'static str = Box::leak(format!("commit_card_ref_badge_{name}").into_boxed_str());
-    let badge = cx.debug_bounds(badge).expect(badge);
-    (badge.left(), badge.right(), badge.top())
-}
-
-/// Long names pack as many badges onto a line as fit at the narrowest
-/// badge width, then grow until the line is full, rather than taking a
-/// line each.
-#[gpui::test]
-fn commit_card_branch_badges_pack_onto_lines_and_grow_into_the_rest(cx: &mut gpui::TestAppContext) {
-    let (view, cx) = commit_card_chip_fixture(cx);
-    let branches = [
-        "claude/gitcomet-child-processes-364bce",
-        "claude/charming-lumiere-4dada4-with-a-long-tail",
-        "feature/super-long-branch-name-that-needs-truncation",
-        "release/2026-11/the-next-big-milestone-candidate",
-    ];
-
-    for width in [420.0, 280.0] {
-        show_card_branches(cx, &view, &branches, width);
-        let card = cx
-            .debug_bounds("commit_details_card")
-            .expect("expected the commit card");
-        let mut badges: Vec<_> = branches
-            .iter()
-            .map(|name| branch_badge_bounds(cx, name))
-            .collect();
-        badges.sort_by(|a, b| a.2.partial_cmp(&b.2).expect("finite"));
-        let lines: Vec<_> = badges
-            .chunk_by(|a, b| (a.2 - b.2).abs() < px(1.0))
-            .collect();
-        assert!(
-            lines.len() <= 2,
-            "{width}px pane: four long badges pack two to a line, badges {badges:?}"
-        );
-
-        // The parent SHA starts the first line, so a wrapped line's first
-        // badge marks the card's inset, the same on both sides.
-        let inset = lines.last().expect("a line")[0].0 - card.left();
-        let row_right = card.right() - inset;
-        for line in &lines {
-            let right = line.iter().map(|badge| badge.1).fold(px(0.0), Pixels::max);
-            assert!(
-                (right - row_right).abs() < px(1.5),
-                "{width}px pane: a line of long badges fills the row to {row_right:?}, \
-                 line {line:?}"
-            );
-        }
-    }
-}
-
-/// A short name keeps its own width while the long ones beside it grow.
-#[gpui::test]
-fn commit_card_short_branch_badge_does_not_stretch(cx: &mut gpui::TestAppContext) {
-    let (view, cx) = commit_card_chip_fixture(cx);
-    let long = "feature/super-long-branch-name-that-needs-truncation";
-    let branches = ["main", long];
-    let widths = |cx: &mut gpui::VisualTestContext, width: f32| {
-        show_card_branches(cx, &view, &branches, width);
-        let width_of = |cx: &mut gpui::VisualTestContext, name| {
-            let (left, right, _) = branch_badge_bounds(cx, name);
-            right - left
-        };
-        (width_of(cx, "main"), width_of(cx, long))
-    };
-
-    let (short_narrow, long_narrow) = widths(cx, 420.0);
-    let (short_wide, long_wide) = widths(cx, 700.0);
-    assert!(
-        (short_narrow - short_wide).abs() < px(0.5),
-        "the short badge keeps its width, {short_narrow:?} then {short_wide:?}"
-    );
-    assert!(
-        long_wide > long_narrow,
-        "the long badge takes the extra room, {long_narrow:?} then {long_wide:?}"
-    );
-}
-
-/// A badge whose whole name fits the line shows all of it.
-#[gpui::test]
-fn commit_card_branch_badge_shows_its_whole_name_when_the_line_has_room(
-    cx: &mut gpui::TestAppContext,
-) {
-    let (view, cx) = commit_card_chip_fixture(cx);
-    let name = "feature/ref-badges-grow";
-    show_card_branches(cx, &view, &[name], 420.0);
-
-    let label: &'static str = Box::leak(format!("commit_card_ref_{name}").into_boxed_str());
-    let bounds = cx.debug_bounds(label).expect(label);
-    cx.simulate_mouse_move(bounds.center(), None, gpui::Modifiers::default());
-    crate::view::test_support::wait_for_native_tooltip(cx);
-    assert_eq!(
-        crate::view::test_support::tooltip_text(cx, &view),
-        None,
-        "the whole name is on screen, so there is nothing to tooltip"
-    );
 }
 
 fn commit_menu_entry(
