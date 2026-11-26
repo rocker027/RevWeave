@@ -402,8 +402,8 @@ pub(super) fn note(source: &str) -> Option<&'static str> {
         }
         "Text diff / conflict diff only." => "僅適用於文字差異或衝突差異。",
         "The last remaining commit cannot be dropped." => "無法捨棄最後一筆提交。",
-        "Alt-Up / Alt-Down on Windows and Linux. The same as the row's ▲/▼ buttons; the first and last rows stay." => {
-            "Windows 與 Linux 為 Alt-Up／Alt-Down。與該列的 ▲／▼ 按鈕相同；第一列與最後一列不會移動。"
+        "The same as the row's ▲/▼ buttons; the first and last rows stay." => {
+            "與該列的 ▲／▼ 按鈕相同；第一列與最後一列不會移動。"
         }
         "The selected file stays open." => "選取的檔案會保持開啟。",
         "The tab stays open." => "分頁會保持開啟。",

@@ -274,6 +274,7 @@ fn doc_keys(value: &str, is_macos: bool) -> Vec<String> {
     }
     let value = value
         .replace("Ctrl/Cmd", if is_macos { "Cmd" } else { "Ctrl" })
+        .replace("Option/Alt", if is_macos { "Option" } else { "Alt" })
         .replace(" or ", ", ")
         .replace(" / ", ", ")
         .replace(" or double-click", "");
@@ -801,6 +802,14 @@ mod tests {
                 .any(|entry| entry.matches("no-such-action-9382", language))
         );
         assert_eq!(doc_keys("Option-Cmd-V", true), vec!["Cmd+Option+V"]);
+        assert_eq!(
+            doc_keys("Option/Alt-Up, Option/Alt-Down", true),
+            doc_keys("Option-Up, Option-Down", true)
+        );
+        assert_eq!(
+            doc_keys("Option/Alt-Up, Option/Alt-Down", false),
+            doc_keys("Alt-Up, Alt-Down", false)
+        );
         assert_eq!(doc_keys("Cmd-,", true), vec!["Cmd+,"]);
         assert_eq!(doc_keys("Cmd-+ / Cmd-=", true), vec!["Cmd++", "Cmd+="]);
     }

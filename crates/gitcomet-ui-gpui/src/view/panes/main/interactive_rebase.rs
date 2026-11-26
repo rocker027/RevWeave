@@ -364,8 +364,11 @@ fn display_pos_for_data_ix(st: &IRebaseViewState, ix: usize) -> usize {
 /// Moves the entry at data index `ix` one row up the list as shown
 /// (`toward_top`) or down it, as the row's ▲/▼ buttons and Option/Alt-Up and
 /// Option/Alt-Down do. Returns whether it moved: the first and last rows stay.
+///
+/// Refused mid-drag: the drag holds the dragged row's data index, which a
+/// move would hand to its neighbour.
 fn move_rebase_entry(st: &mut IRebaseViewState, ix: usize, toward_top: bool) -> bool {
-    if ix >= st.entries.len() {
+    if ix >= st.entries.len() || st.drag_state.is_some() {
         return false;
     }
     let display_pos = display_pos_for_data_ix(st, ix);
@@ -672,10 +675,6 @@ impl MainPaneView {
         cx.notify();
     }
 
-    /// The editor entry for the commit selected in history, if it is listed.
-    /// The row single keys act on: the one last clicked in the editor, which
-    /// the store may not have published as the selection yet, else the
-    /// commit selected in history.
     /// Moves the selected row up or down, as Option/Alt-Up and Option/Alt-Down
     /// do. The selection follows the row: it is kept by commit id.
     fn move_selected_rebase_entry(&mut self, toward_top: bool) -> bool {
@@ -686,6 +685,10 @@ impl MainPaneView {
             .is_some_and(|st| move_rebase_entry(st, ix, toward_top))
     }
 
+    /// The editor entry for the commit selected in history, if it is listed.
+    /// The row single keys act on: the one last clicked in the editor, which
+    /// the store may not have published as the selection yet, else the
+    /// commit selected in history.
     fn selected_rebase_entry_ix(&self) -> Option<usize> {
         let repo = self.active_repo()?;
         let entries = &self.active_irebase()?.entries;
@@ -1770,6 +1773,18 @@ mod tests {
         );
         assert_eq!(entry_ids(&st), vec!["a", "b", "c"]);
         assert_eq!(st.reorder_anim, None);
+    }
+
+    #[test]
+    fn move_rebase_entry_waits_for_a_drag_to_end() {
+        let mut st = rebase_state(&["a", "b", "c"]);
+        st.drag_state = Some(IRebaseDragState {
+            from_ix: 0,
+            to_ix: 0,
+            display_pos: 2,
+        });
+        assert!(!move_rebase_entry(&mut st, 0, true));
+        assert_eq!(entry_ids(&st), vec!["a", "b", "c"]);
     }
 
     #[test]
