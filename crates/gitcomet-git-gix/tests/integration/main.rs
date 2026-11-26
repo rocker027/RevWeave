@@ -15,6 +15,7 @@ mod annex;
 mod apply_file_change;
 mod backend;
 mod background_fetch;
+mod bisect;
 mod blame;
 mod cherry_pick;
 mod commit_signature;

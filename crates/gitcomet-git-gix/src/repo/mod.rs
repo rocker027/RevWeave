@@ -55,6 +55,7 @@ mod annex;
 mod apply_change;
 pub(crate) mod bare;
 mod bare_lifecycle;
+mod bisect;
 mod blame;
 mod comparison;
 mod config;
@@ -1736,6 +1737,33 @@ impl GitRepository for GixRepo {
         let in_progress = self.rebase_in_progress_impl()?;
         cancellation.check_cancelled()?;
         Ok(in_progress)
+    }
+
+    fn bisect_state(
+        &self,
+        cancellation: &CancellationToken,
+    ) -> Result<Option<gitcomet_core::services::BisectState>> {
+        let _operation = self.operation_lease()?;
+        cancellation.check_cancelled()?;
+        let state = self.bisect_state_impl()?;
+        cancellation.check_cancelled()?;
+        Ok(state)
+    }
+
+    fn bisect_mark_with_output(
+        &self,
+        verdict: gitcomet_core::services::BisectVerdict,
+        commit: &CommitId,
+    ) -> Result<CommandOutput> {
+        let _operation = self.operation_lease()?;
+        self.require_working_tree()?;
+        self.bisect_mark_with_output_impl(verdict, commit)
+    }
+
+    fn bisect_reset_with_output(&self) -> Result<CommandOutput> {
+        let _operation = self.operation_lease()?;
+        self.require_working_tree()?;
+        self.bisect_reset_with_output_impl()
     }
 
     fn sequencer_state(&self, cancellation: &CancellationToken) -> Result<SequencerState> {

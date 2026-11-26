@@ -410,6 +410,40 @@ impl InteractiveRebaseAction {
     }
 }
 
+/// The verdict `git bisect` records for a commit.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum BisectVerdict {
+    Good,
+    Bad,
+    Skip,
+}
+
+impl BisectVerdict {
+    /// The `git bisect` subcommand that records this verdict.
+    pub fn git_term(self) -> &'static str {
+        match self {
+            Self::Good => "good",
+            Self::Bad => "bad",
+            Self::Skip => "skip",
+        }
+    }
+}
+
+/// A worktree's `git bisect` session, read from its `refs/bisect/` refs.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BisectState {
+    pub bad: Option<CommitId>,
+    pub good: Vec<CommitId>,
+    pub skipped: Vec<CommitId>,
+    /// Commits left to test after the checked-out one (git's `bisect_nr`),
+    /// once a bad and a good commit are both known.
+    pub remaining: Option<usize>,
+    /// Roughly how many steps are left (git's `bisect_steps`).
+    pub steps: Option<usize>,
+    /// The first bad commit, once it is the only candidate left.
+    pub first_bad: Option<CommitId>,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum SequencerState {
     #[default]
@@ -1572,6 +1606,32 @@ pub trait GitRepository: Send + Sync {
         let result = result?;
         cancellation.check_cancelled()?;
         Ok(result)
+    }
+
+    /// The `git bisect` session in progress, or `None` outside one.
+    fn bisect_state(&self, cancellation: &CancellationToken) -> Result<Option<BisectState>> {
+        cancellation.check_cancelled()?;
+        Ok(None)
+    }
+
+    /// Records `verdict` for `commit`, starting a session first when none
+    /// runs. Git checks out the next commit to test once a bad and a good
+    /// commit are known.
+    fn bisect_mark_with_output(
+        &self,
+        _verdict: BisectVerdict,
+        _commit: &CommitId,
+    ) -> Result<CommandOutput> {
+        Err(Error::new(ErrorKind::Unsupported(
+            "git bisect is not implemented for this backend",
+        )))
+    }
+
+    /// Ends the session and checks out what was checked out when it started.
+    fn bisect_reset_with_output(&self) -> Result<CommandOutput> {
+        Err(Error::new(ErrorKind::Unsupported(
+            "git bisect is not implemented for this backend",
+        )))
     }
 
     fn sequencer_state(&self, cancellation: &CancellationToken) -> Result<SequencerState> {
