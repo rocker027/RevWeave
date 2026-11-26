@@ -212,6 +212,7 @@ impl PopoverHost {
             | ContextMenuAction::CherryPickCommit { repo_id, .. }
             | ContextMenuAction::RevertCommit { repo_id, .. }
             | ContextMenuAction::EditCommitMessage { repo_id, .. }
+            | ContextMenuAction::CreateFixupCommit { repo_id, .. }
             | ContextMenuAction::StageStatusFolder { repo_id, .. }
             | ContextMenuAction::ApplyFileChange { repo_id, .. }
             | ContextMenuAction::CheckoutBranch { repo_id, .. }

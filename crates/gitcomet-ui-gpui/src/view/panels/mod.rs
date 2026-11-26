@@ -490,6 +490,12 @@ pub(in crate::view) enum ContextMenuAction {
     UseCommitMessage {
         message: String,
     },
+    /// Commit what is staged as a fixup for an older commit; `message` is
+    /// already `fixup! <subject>`.
+    CreateFixupCommit {
+        repo_id: RepoId,
+        message: String,
+    },
     StageSelectionOrPath {
         repo_id: RepoId,
         area: DiffArea,

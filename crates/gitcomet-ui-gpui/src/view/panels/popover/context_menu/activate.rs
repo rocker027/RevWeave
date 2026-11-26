@@ -908,6 +908,20 @@ impl PopoverHost {
                     let _ = root_view.request(RootRequest::SetCommitSkipHooks(enabled), None, cx);
                 });
             }
+            ContextMenuAction::CreateFixupCommit { repo_id, message } => {
+                self.store.dispatch(Msg::Commit {
+                    repo_id,
+                    request: gitcomet_state::model::CommitRequest {
+                        message,
+                        amend: false,
+                        push_after_commit: false,
+                        hooks: gitcomet_core::services::GitHooks::from_skip(
+                            self.commit_skip_hooks_enabled,
+                        ),
+                        stage_paths: Vec::new(),
+                    },
+                });
+            }
             ContextMenuAction::UseCommitMessage { message } => {
                 self.details_pane.update(cx, |pane, cx| {
                     pane.set_commit_message_from_history(message, window, cx);

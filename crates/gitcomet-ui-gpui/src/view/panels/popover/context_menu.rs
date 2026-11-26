@@ -29,6 +29,7 @@ mod file_browser_folder;
 pub(super) mod file_history_commit;
 mod file_list_folder;
 mod file_list_layout;
+mod fixup_commit;
 mod focus;
 mod history_branch_filter;
 mod history_refs;

@@ -2675,6 +2675,95 @@ fn the_commit_menu_offers_edit_message_under_the_pencil_rules(cx: &mut gpui::Tes
     );
 }
 
+/// The commit menu's "Create fixup commit" entry: whether it is disabled, its
+/// tooltip, and the action it runs.
+fn fixup_menu_entry(
+    cx: &mut gpui::VisualTestContext,
+    view: &gpui::Entity<crate::view::GitCometView>,
+    repo_id: gitcomet_state::model::RepoId,
+    sha: &str,
+) -> (bool, Option<String>, ContextMenuAction) {
+    let commit_id = reword_commit_id(sha);
+    cx.update(|_window, app| {
+        view.update(app, |this, cx| {
+            this.popover_host.update(cx, |host, cx| {
+                let model = host
+                    .context_menu_model(
+                        &PopoverKind::CommitMenu {
+                            repo_id,
+                            commit_id: commit_id.clone(),
+                            refs: crate::view::CommitMenuRefs::All,
+                        },
+                        cx,
+                    )
+                    .expect("expected the commit menu");
+                let ix = model
+                    .items
+                    .iter()
+                    .position(|item| {
+                        matches!(item, ContextMenuItem::Entry { label, .. } if label.as_ref() == "Create fixup commit")
+                    })
+                    .expect("expected a Create fixup commit entry");
+                let ContextMenuItem::Entry {
+                    disabled, action, ..
+                } = &model.items[ix]
+                else {
+                    unreachable!()
+                };
+                (
+                    *disabled,
+                    model.entry_tooltips.get(&ix).map(|text| text.to_string()),
+                    action.as_ref().clone(),
+                )
+            })
+        })
+    })
+}
+
+#[gpui::test]
+fn the_commit_menu_creates_a_fixup_from_staged_changes(cx: &mut gpui::TestAppContext) {
+    let (store, events) = AppStore::new_test(Arc::new(TestBackend));
+    let (view, cx) = cx.add_window_view(|window, cx| {
+        super::super::super::GitCometView::new(store, events, None, window, cx)
+    });
+    let repo_id = gitcomet_state::model::RepoId(66);
+    let mut repo = rewordable_repo(repo_id, REWORD_OLDER_SHA, "b", false);
+    show_rewordable_commit(cx, &view, repo.clone());
+
+    let (disabled, reason, _) = fixup_menu_entry(cx, &view, repo_id, REWORD_OLDER_SHA);
+    assert!(disabled, "nothing is staged");
+    assert_eq!(
+        reason.as_deref(),
+        Some("Stage the changes to fold into this commit first")
+    );
+
+    repo.status = Loadable::Ready(
+        gitcomet_core::domain::RepoStatus {
+            staged: Arc::new(vec![gitcomet_core::domain::FileStatus {
+                path: "src/lib.rs".into(),
+                kind: gitcomet_core::domain::FileStatusKind::Modified,
+                conflict: None,
+            }]),
+            unstaged: Arc::new(Vec::new()),
+        }
+        .into(),
+    );
+    show_rewordable_commit(cx, &view, repo);
+
+    let (disabled, reason, action) = fixup_menu_entry(cx, &view, repo_id, REWORD_OLDER_SHA);
+    assert!(!disabled, "a staged change on HEAD's history: {reason:?}");
+    assert_eq!(reason, None);
+    let ContextMenuAction::CreateFixupCommit {
+        repo_id: action_repo_id,
+        message,
+    } = action
+    else {
+        panic!("expected the entry to create a fixup commit");
+    };
+    assert_eq!(action_repo_id, repo_id);
+    assert_eq!(message, "fixup! b");
+}
+
 #[gpui::test]
 fn edit_message_from_the_commit_menu_opens_the_editor(cx: &mut gpui::TestAppContext) {
     let (store, events) = AppStore::new_test(Arc::new(TestBackend));

@@ -427,24 +427,26 @@ fn model_with_header(
     let sha = commit_id.as_ref().to_string();
     let short: SharedString = sha.get(0..8).unwrap_or(&sha).to_string().into();
 
-    let commit_summary = this
-        .active_repo()
-        .and_then(|r| {
-            if let Some(index) = &r.history_state.indexed.range_index
-                && let Some(row) = index.position(commit_id.as_ref())
-                && let Some(commit) = r.history_state.indexed.commit(&index.snapshot, row)
-            {
-                return Some(format!("{} — {}", commit.author, commit.summary));
-            }
-            match &r.log {
-                Loadable::Ready(page) => page
-                    .commits
-                    .iter()
-                    .find(|c| c.id == *commit_id)
-                    .map(|c| format!("{} — {}", c.author, c.summary)),
-                _ => None,
-            }
-        })
+    // (author, subject) of the row, when the history has it loaded.
+    let commit_row = this.active_repo().and_then(|r| {
+        if let Some(index) = &r.history_state.indexed.range_index
+            && let Some(row) = index.position(commit_id.as_ref())
+            && let Some(commit) = r.history_state.indexed.commit(&index.snapshot, row)
+        {
+            return Some((commit.author.to_string(), commit.summary.to_string()));
+        }
+        match &r.log {
+            Loadable::Ready(page) => page
+                .commits
+                .iter()
+                .find(|c| c.id == *commit_id)
+                .map(|c| (c.author.to_string(), c.summary.to_string())),
+            _ => None,
+        }
+    });
+    let commit_summary = commit_row
+        .as_ref()
+        .map(|(author, summary)| format!("{author} — {summary}"))
         .unwrap_or_default();
 
     let branch_names: Vec<String> = this
@@ -826,6 +828,24 @@ fn model_with_header(
             commit_id: commit_id.clone(),
         }),
     });
+    let fixup_subject = commit_row.as_ref().map(|(_, summary)| summary.as_str());
+    let fixup_blocker = this
+        .active_repo()
+        .filter(|repo| repo.id == repo_id)
+        .and_then(|repo| {
+            let judged = repo.head_commit_id().as_ref() == Some(commit_id)
+                || repo.history_state.selected_commit.as_ref() == Some(commit_id);
+            super::fixup_commit::fixup_blocker(repo, commit_id, fixup_subject, judged)
+        });
+    if let Some(blocker) = fixup_blocker {
+        entry_tooltips.insert(items.len(), blocker.into());
+    }
+    items.push(super::fixup_commit::entry(
+        repo_id,
+        fixup_subject,
+        fixup_blocker.is_some() || worktree_finish_busy,
+        language,
+    ));
     items.push(revert_entry(
         repo_id,
         commit_id,
