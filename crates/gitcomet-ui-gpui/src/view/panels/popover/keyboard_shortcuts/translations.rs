@@ -64,6 +64,8 @@ pub(super) fn action(source: &str) -> Option<&'static str> {
         "Discard the file's changes" => "捨棄檔案的變更",
         "Discard the selected lines" => "捨棄選取的行",
         "Drop the selected commit" => "捨棄選取的提交",
+        "Move the selected commit up / down" => "上移／下移選取的提交",
+        "Open the selected commit, worktree, or file menu" => "開啟選取的提交、工作樹或檔案選單",
         "Duplicate" => "製作副本",
         "Enter or leave the file editor" => "進入或離開檔案編輯器",
         "Expand / collapse or navigate folders" => "展開／收合或瀏覽資料夾",
@@ -400,6 +402,9 @@ pub(super) fn note(source: &str) -> Option<&'static str> {
         }
         "Text diff / conflict diff only." => "僅適用於文字差異或衝突差異。",
         "The last remaining commit cannot be dropped." => "無法捨棄最後一筆提交。",
+        "Alt-Up / Alt-Down on Windows and Linux. The same as the row's ▲/▼ buttons; the first and last rows stay." => {
+            "Windows 與 Linux 為 Alt-Up／Alt-Down。與該列的 ▲／▼ 按鈕相同；第一列與最後一列不會移動。"
+        }
         "The selected file stays open." => "選取的檔案會保持開啟。",
         "The tab stays open." => "分頁會保持開啟。",
         "Unavailable while later commits squash into it." => {

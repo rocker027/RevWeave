@@ -361,6 +361,46 @@ fn display_pos_for_data_ix(st: &IRebaseViewState, ix: usize) -> usize {
     }
 }
 
+/// Moves the entry at data index `ix` one row up the list as shown
+/// (`toward_top`) or down it, as the row's ▲/▼ buttons and Option/Alt-Up and
+/// Option/Alt-Down do. Returns whether it moved: the first and last rows stay.
+fn move_rebase_entry(st: &mut IRebaseViewState, ix: usize, toward_top: bool) -> bool {
+    if ix >= st.entries.len() {
+        return false;
+    }
+    let display_pos = display_pos_for_data_ix(st, ix);
+    let target_pos = if toward_top {
+        display_pos.checked_sub(1)
+    } else {
+        Some(display_pos + 1).filter(|&pos| pos < st.entries.len())
+    };
+    let Some(target_pos) = target_pos else {
+        return false;
+    };
+    let swap_ix = data_ix_for_display(st, target_pos);
+    let edit_signatures = reword_edit_signatures(&st.entries);
+    st.entries.swap(ix, swap_ix);
+    clear_stale_reword_edits(&edit_signatures, &mut st.entries);
+    validate_squash_entries(&mut st.entries);
+    let ver = st.reorder_anim.map(|(_, _, v)| v + 1).unwrap_or(0);
+    st.reorder_anim = Some((ix, swap_ix, ver));
+    true
+}
+
+/// Option/Alt-Up and Option/Alt-Down, with no other modifier: `Some(true)`
+/// moves the selected row up, `Some(false)` down.
+fn rebase_move_direction(keystroke: &gpui::Keystroke) -> Option<bool> {
+    let mods = keystroke.modifiers;
+    if !mods.alt || mods.control || mods.platform || mods.shift || mods.function {
+        return None;
+    }
+    match keystroke.key.as_str() {
+        "up" => Some(true),
+        "down" => Some(false),
+        _ => None,
+    }
+}
+
 fn insertion_data_ix_for_display(
     st: &IRebaseViewState,
     from_ix: usize,
@@ -636,6 +676,16 @@ impl MainPaneView {
     /// The row single keys act on: the one last clicked in the editor, which
     /// the store may not have published as the selection yet, else the
     /// commit selected in history.
+    /// Moves the selected row up or down, as Option/Alt-Up and Option/Alt-Down
+    /// do. The selection follows the row: it is kept by commit id.
+    fn move_selected_rebase_entry(&mut self, toward_top: bool) -> bool {
+        let Some(ix) = self.selected_rebase_entry_ix() else {
+            return false;
+        };
+        self.active_irebase_mut()
+            .is_some_and(|st| move_rebase_entry(st, ix, toward_top))
+    }
+
     fn selected_rebase_entry_ix(&self) -> Option<usize> {
         let repo = self.active_repo()?;
         let entries = &self.active_irebase()?.entries;
@@ -944,16 +994,7 @@ impl MainPaneView {
                     let Some(st) = this.interactive_rebase_states.get_mut(&repo_id) else {
                         return;
                     };
-                    let entry_display_pos = display_pos_for_data_ix(st, ix);
-                    if entry_display_pos > 0 {
-                        let swap_ix = data_ix_for_display(st, entry_display_pos - 1);
-                        let edit_signatures = reword_edit_signatures(&st.entries);
-                        st.entries.swap(ix, swap_ix);
-                        clear_stale_reword_edits(&edit_signatures, &mut st.entries);
-                        validate_squash_entries(&mut st.entries);
-                        let ver = st.reorder_anim.map(|(_, _, v)| v + 1).unwrap_or(0);
-                        st.reorder_anim = Some((ix, swap_ix, ver));
-                    }
+                    move_rebase_entry(st, ix, true);
                     cx.notify();
                 }),
             );
@@ -974,17 +1015,7 @@ impl MainPaneView {
                     let Some(st) = this.interactive_rebase_states.get_mut(&repo_id) else {
                         return;
                     };
-                    let len = st.entries.len();
-                    let entry_display_pos = display_pos_for_data_ix(st, ix);
-                    if entry_display_pos + 1 < len {
-                        let swap_ix = data_ix_for_display(st, entry_display_pos + 1);
-                        let edit_signatures = reword_edit_signatures(&st.entries);
-                        st.entries.swap(ix, swap_ix);
-                        clear_stale_reword_edits(&edit_signatures, &mut st.entries);
-                        validate_squash_entries(&mut st.entries);
-                        let ver = st.reorder_anim.map(|(_, _, v)| v + 1).unwrap_or(0);
-                        st.reorder_anim = Some((ix, swap_ix, ver));
-                    }
+                    move_rebase_entry(st, ix, false);
                     cx.notify();
                 }),
             );
@@ -1429,6 +1460,13 @@ impl MainPaneView {
                 if !this.irebase_focus_handle.is_focused(window) {
                     return;
                 }
+                if let Some(toward_top) = rebase_move_direction(&e.keystroke) {
+                    if this.move_selected_rebase_entry(toward_top) {
+                        cx.notify();
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
                 let mods = e.keystroke.modifiers;
                 if mods.number_of_modifiers() > 0 {
                     return;
@@ -1690,6 +1728,59 @@ mod tests {
         );
         assert_eq!(rebase_action_for_key("f"), None);
         assert_eq!(rebase_action_for_key("x"), None);
+    }
+
+    fn rebase_state(ids: &[&str]) -> IRebaseViewState {
+        let entries: Vec<_> = ids
+            .iter()
+            .map(|id| entry(InteractiveRebaseAction::Pick, id, None))
+            .collect();
+        IRebaseViewState {
+            original_entries: entries.clone(),
+            entries,
+            ..Default::default()
+        }
+    }
+
+    fn entry_ids(st: &IRebaseViewState) -> Vec<&str> {
+        st.entries.iter().map(|e| e.commit_id.as_str()).collect()
+    }
+
+    #[test]
+    fn move_rebase_entry_follows_the_list_as_shown() {
+        // Data order is oldest first; the list shows the newest at the top.
+        let mut st = rebase_state(&["a", "b", "c"]);
+        assert!(move_rebase_entry(&mut st, 0, true), "oldest moves up a row");
+        assert_eq!(entry_ids(&st), vec!["b", "a", "c"]);
+        assert!(move_rebase_entry(&mut st, 1, false), "and back down");
+        assert_eq!(entry_ids(&st), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn move_rebase_entry_stops_at_the_ends() {
+        let mut st = rebase_state(&["a", "b", "c"]);
+        assert!(!move_rebase_entry(&mut st, 2, true), "the top row stays");
+        assert!(
+            !move_rebase_entry(&mut st, 0, false),
+            "the bottom row stays"
+        );
+        assert!(
+            !move_rebase_entry(&mut st, 3, true),
+            "an out-of-range row is ignored"
+        );
+        assert_eq!(entry_ids(&st), vec!["a", "b", "c"]);
+        assert_eq!(st.reorder_anim, None);
+    }
+
+    #[test]
+    fn only_bare_option_arrows_move_rows() {
+        let parse = |text: &str| gpui::Keystroke::parse(text).expect("valid keystroke");
+        assert_eq!(rebase_move_direction(&parse("alt-up")), Some(true));
+        assert_eq!(rebase_move_direction(&parse("alt-down")), Some(false));
+        assert_eq!(rebase_move_direction(&parse("up")), None);
+        assert_eq!(rebase_move_direction(&parse("alt-shift-up")), None);
+        assert_eq!(rebase_move_direction(&parse("cmd-alt-up")), None);
+        assert_eq!(rebase_move_direction(&parse("alt-left")), None);
     }
 
     #[test]
