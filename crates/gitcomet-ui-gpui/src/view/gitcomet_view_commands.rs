@@ -363,6 +363,7 @@ impl GitCometView {
                             target,
                             source_selectable: true,
                             name_prefix: String::new(),
+                            checkout_on_open: true,
                         },
                         window,
                         cx,

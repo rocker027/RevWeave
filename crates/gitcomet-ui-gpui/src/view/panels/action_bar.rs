@@ -1561,6 +1561,7 @@ impl BarItemOwner for ActionBarView {
                             target,
                             source_selectable: true,
                             name_prefix: String::new(),
+                            checkout_on_open: true,
                         })
                         .invoked_by(create_branch_invoker.clone()),
                         bounds,

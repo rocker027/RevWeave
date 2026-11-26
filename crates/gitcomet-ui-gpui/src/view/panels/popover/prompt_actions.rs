@@ -76,6 +76,7 @@ impl PopoverHost {
                 source_selectable,
                 // Consumed when the popover opens, seeding the name input.
                 name_prefix: _,
+                checkout_on_open: _,
             } => create_branch_from_ref_prompt::panel(
                 self,
                 repo_id,

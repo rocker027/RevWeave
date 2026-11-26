@@ -983,6 +983,7 @@ fn create_branch_popover_escape_cancels(cx: &mut gpui::TestAppContext) {
                         target: "HEAD".to_string(),
                         source_selectable: false,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     })
                     .invoked_by("create_branch_btn".into()),
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
@@ -1060,6 +1061,7 @@ fn create_branch_source_picker_preserves_focus_and_selects_on_completed_click(
                         target: "HEAD".to_string(),
                         source_selectable: true,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     },
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
                     window,
@@ -1168,6 +1170,7 @@ fn create_branch_source_picker_enter_selects_and_focuses_name(cx: &mut gpui::Tes
                         target: "HEAD".to_string(),
                         source_selectable: true,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     },
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
                     window,
@@ -1406,6 +1409,7 @@ fn create_branch_popover_renders_shortcut_hints_and_separators(cx: &mut gpui::Te
                         target: "HEAD".to_string(),
                         source_selectable: false,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     },
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
                     window,
@@ -1449,6 +1453,7 @@ fn create_branch_from_ref_popover_tabs_to_checkout_and_wraps(cx: &mut gpui::Test
                         target: "main".to_string(),
                         source_selectable: false,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     },
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
                     window,
@@ -1567,6 +1572,7 @@ fn create_branch_popover_enter_creates_and_closes(cx: &mut gpui::TestAppContext)
                         target: "HEAD".to_string(),
                         source_selectable: false,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     })
                     .invoked_by("create_branch_btn".into()),
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
@@ -1622,6 +1628,76 @@ fn create_branch_popover_enter_creates_and_closes(cx: &mut gpui::TestAppContext)
     });
 }
 
+/// The reflog's "Create branch here" opens the prompt with Checkout off, so
+/// Enter only creates the branch at the entry's commit: HEAD stays put and the
+/// creation stays undoable.
+#[gpui::test]
+fn create_branch_prompt_from_reflog_creates_without_checkout(cx: &mut gpui::TestAppContext) {
+    const RESCUED_SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+    let (store, events, repo, _workdir) = create_tracking_store("create-branch-reflog");
+    let repo_id = store.snapshot().active_repo.expect("expected active repo");
+    let store_for_view = store.clone();
+    let (view, cx) = cx
+        .add_window_view(|window, cx| GitCometView::new(store_for_view, events, None, window, cx));
+
+    cx.update(|window, app| {
+        app.bind_keys([gpui::KeyBinding::new(
+            "enter",
+            crate::kit::Enter,
+            Some("TextInput"),
+        )]);
+        let _ = window.draw(app);
+    });
+    cx.update(|window, app| {
+        view.update(app, |this, cx| {
+            this.popover_host.update(cx, |host, cx| {
+                host.open_popover_at(
+                    PopoverKind::CreateBranchFromRefPrompt {
+                        repo_id,
+                        target: RESCUED_SHA.to_string(),
+                        source_selectable: false,
+                        name_prefix: String::new(),
+                        checkout_on_open: false,
+                    },
+                    gpui::point(gpui::px(120.0), gpui::px(72.0)),
+                    window,
+                    cx,
+                );
+                host.create_branch_input
+                    .update(cx, |input, cx| input.set_text("rescued", cx));
+            });
+        });
+    });
+    cx.update(|window, app| {
+        let _ = window.draw(app);
+        assert!(
+            !view
+                .read(app)
+                .popover_host
+                .read(app)
+                .create_branch_checkout_enabled,
+            "expected the reflog prompt to open with Checkout off"
+        );
+    });
+
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+
+    wait_until("reflog create-branch repo actions", || {
+        repo.actions() == vec!["create:rescued".to_string()]
+    });
+    assert_eq!(
+        repo.create_attempts(),
+        vec![format!("rescued@{RESCUED_SHA}")]
+    );
+    cx.run_until_parked();
+    assert_eq!(
+        repo.actions(),
+        vec!["create:rescued".to_string()],
+        "expected no checkout after creating the rescued branch"
+    );
+}
+
 fn open_create_branch_prompt_for_enter_test(
     cx: &mut gpui::VisualTestContext,
     view: &gpui::Entity<GitCometView>,
@@ -1645,6 +1721,7 @@ fn open_create_branch_prompt_for_enter_test(
                         target: "HEAD".to_string(),
                         source_selectable: false,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     },
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
                     window,
@@ -2010,6 +2087,7 @@ fn create_branch_popover_enter_with_empty_input_does_not_close_or_create(
                         target: "HEAD".to_string(),
                         source_selectable: false,
                         name_prefix: String::new(),
+                        checkout_on_open: true,
                     })
                     .invoked_by("create_branch_btn".into()),
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
@@ -2089,6 +2167,7 @@ fn create_branch_popover_enter_with_a_bare_group_prefix_does_not_close_or_create
                         target: "HEAD".to_string(),
                         source_selectable: false,
                         name_prefix: "feat/".to_string(),
+                        checkout_on_open: true,
                     },
                     gpui::point(gpui::px(120.0), gpui::px(72.0)),
                     window,

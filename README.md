@@ -43,6 +43,7 @@ Git 2.53 or newer enables every feature. With an older Git, features that need n
 - Inline and side-by-side diffs, line-level staging, and [Difftastic](docs/difftastic.md)
 - 2-way and 3-way merge tools
 - Interactive rebase, cherry-pick, blame, stashes, and submodules
+- Reflog with commit rescue ([docs](docs/reflog.md))
 - Built-in editor, embedded terminal, and custom themes
 - Git LFS: file status, content downloads, locks and tracking ([docs](docs/git-lfs.md))
 - git-annex: content get/drop/copy/move, special remotes, adjusted branches ([docs](docs/git-annex.md))

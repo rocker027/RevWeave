@@ -1328,6 +1328,47 @@ fn create_branch_existing_branch_returns_structured_git_error() {
     );
 }
 
+/// The reflog's "Create branch here" rescues a commit that no ref reaches any
+/// more, such as one a hard reset left behind.
+#[test]
+fn create_branch_at_an_unreachable_commit_rescues_it() {
+    test_git_env::ensure_initialized();
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+
+    run_git(repo, &["init", "-b", "main"]);
+    run_git(repo, &["config", "user.email", "you@example.com"]);
+    run_git(repo, &["config", "user.name", "You"]);
+    run_git(repo, &["config", "commit.gpgsign", "false"]);
+    write(repo, "a.txt", "one\n");
+    run_git(repo, &["add", "a.txt"]);
+    run_git(repo, &["commit", "-m", "init"]);
+    write(repo, "a.txt", "two\n");
+    run_git(repo, &["commit", "-am", "lost"]);
+    let lost = run_git_output(repo, &["rev-parse", "HEAD"]);
+    run_git(repo, &["reset", "--hard", "HEAD~1"]);
+    let head_before = run_git_output(repo, &["rev-parse", "HEAD"]);
+
+    let backend = GixBackend;
+    let opened = backend.open(repo).unwrap();
+    opened
+        .create_branch(
+            "rescued",
+            &gitcomet_core::domain::CommitId(lost.clone().into()),
+        )
+        .expect("creating a branch at an unreachable commit should succeed");
+
+    assert_eq!(
+        run_git_output(repo, &["rev-parse", "refs/heads/rescued"]),
+        lost
+    );
+    assert_eq!(run_git_output(repo, &["rev-parse", "HEAD"]), head_before);
+    assert_eq!(
+        run_git_output(repo, &["symbolic-ref", "--short", "HEAD"]),
+        "main"
+    );
+}
+
 #[test]
 fn create_branch_on_unborn_head_returns_structured_git_error() {
     test_git_env::ensure_initialized();

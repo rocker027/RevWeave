@@ -43,6 +43,7 @@ Git 2.53 以上可使用完整功能。使用較舊的 Git 時，依賴新版 Gi
 - 行內與並排差異、逐行暫存，以及 [Difftastic](docs/difftastic.md)
 - 雙向與三向合併工具
 - 互動式 rebase、cherry-pick、blame、stash 與子模組
+- Reflog 與提交救回（[說明](docs/reflog.md)）
 - 內建編輯器、內嵌終端機與自訂佈景主題
 - Git LFS：檔案狀態、內容下載、鎖定與追蹤（[說明](docs/git-lfs.md)）
 - git-annex：內容 get／drop／copy／move、特殊遠端、adjusted 分支（[說明](docs/git-annex.md)）

@@ -2149,14 +2149,15 @@ impl PopoverHost {
                     source_selectable,
                     target,
                     name_prefix,
-                    ..
+                    checkout_on_open,
                 } => {
-                    self.create_branch_checkout_enabled = !self
-                        .state
-                        .repos
-                        .iter()
-                        .find(|repo| repo.id == *repo_id)
-                        .is_some_and(RepoState::is_bare);
+                    self.create_branch_checkout_enabled = *checkout_on_open
+                        && !self
+                            .state
+                            .repos
+                            .iter()
+                            .find(|repo| repo.id == *repo_id)
+                            .is_some_and(RepoState::is_bare);
                     self.create_branch_source_target = target.clone();
                     if *source_selectable {
                         let _ = self.ensure_branch_picker_search_input(window, cx);

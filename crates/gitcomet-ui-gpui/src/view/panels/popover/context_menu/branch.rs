@@ -300,6 +300,7 @@ pub(super) fn model(
                 target: action_reference.clone(),
                 source_selectable: false,
                 name_prefix: String::new(),
+                checkout_on_open: true,
             },
         }),
     });

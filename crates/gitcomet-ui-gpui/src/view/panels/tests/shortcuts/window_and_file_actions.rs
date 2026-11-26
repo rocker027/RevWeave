@@ -447,6 +447,7 @@ fn prompt_popovers_grow_wider_with_ui_zoom(cx: &mut gpui::TestAppContext) {
             target: "HEAD".to_string(),
             source_selectable: false,
             name_prefix: String::new(),
+            checkout_on_open: true,
         },
     );
     draw_and_drain_test_window(cx);

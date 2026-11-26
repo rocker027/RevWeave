@@ -730,7 +730,9 @@ impl PopoverHost {
                 repo_id,
                 target,
                 selector,
-            } => Some(reflog_entry::model(*repo_id, selector, target)),
+            } => Some(localized_menu(cx, |language| {
+                reflog_entry::model(*repo_id, selector, target, language)
+            })),
             PopoverKind::FileHistoryCommitMenu {
                 repo_id,
                 commit_id,

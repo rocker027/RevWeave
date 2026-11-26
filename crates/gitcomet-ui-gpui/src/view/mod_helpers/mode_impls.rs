@@ -167,6 +167,10 @@ pub(crate) enum PopoverKind {
         /// two prompts differing only by prefix are different popovers; sharing
         /// a value would make them compare equal.
         name_prefix: String,
+        /// Whether the Checkout toggle starts on. Off for rescuing a commit
+        /// from the reflog: creating the branch alone stays undoable, while
+        /// creating and checking it out ends what Git Undo can undo.
+        checkout_on_open: bool,
     },
     RenameBranchPrompt {
         repo_id: RepoId,

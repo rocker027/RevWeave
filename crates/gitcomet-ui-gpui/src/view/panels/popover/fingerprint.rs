@@ -781,11 +781,13 @@ fn hash_popover_kind<H: Hasher>(kind: &PopoverKind, hasher: &mut H) {
             target,
             source_selectable,
             name_prefix,
+            checkout_on_open,
         } => {
             repo_id.hash(hasher);
             target.hash(hasher);
             source_selectable.hash(hasher);
             name_prefix.hash(hasher);
+            checkout_on_open.hash(hasher);
         }
         PopoverKind::RenameBranchPrompt {
             repo_id,

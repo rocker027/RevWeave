@@ -773,6 +773,7 @@ fn model_with_header(
                 target: sha.clone(),
                 source_selectable: false,
                 name_prefix: String::new(),
+                checkout_on_open: true,
             },
         }),
     });
