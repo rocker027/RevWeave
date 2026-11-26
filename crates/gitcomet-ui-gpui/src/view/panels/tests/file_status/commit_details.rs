@@ -2728,6 +2728,13 @@ fn the_commit_menu_creates_a_fixup_from_staged_changes(cx: &mut gpui::TestAppCon
     });
     let repo_id = gitcomet_state::model::RepoId(66);
     let mut repo = rewordable_repo(repo_id, REWORD_OLDER_SHA, "b", false);
+    // On a branch, with no merge, rebase or sequencer left to conclude.
+    // The fixture names HEAD's commit through `detached_head_commit`; the
+    // branch name is what Git Undo needs.
+    repo.head_branch = Loadable::Ready("main".to_string());
+    repo.merge_commit_message = Loadable::Ready(None);
+    repo.sequencer_state = Loadable::Ready(Default::default());
+    repo.rebase_in_progress = Loadable::Ready(false);
     show_rewordable_commit(cx, &view, repo.clone());
 
     let (disabled, reason, _) = fixup_menu_entry(cx, &view, repo_id, REWORD_OLDER_SHA);
@@ -2748,20 +2755,49 @@ fn the_commit_menu_creates_a_fixup_from_staged_changes(cx: &mut gpui::TestAppCon
         }
         .into(),
     );
-    show_rewordable_commit(cx, &view, repo);
+    show_rewordable_commit(cx, &view, repo.clone());
 
     let (disabled, reason, action) = fixup_menu_entry(cx, &view, repo_id, REWORD_OLDER_SHA);
     assert!(!disabled, "a staged change on HEAD's history: {reason:?}");
     assert_eq!(reason, None);
     let ContextMenuAction::CreateFixupCommit {
         repo_id: action_repo_id,
+        commit_id,
         message,
     } = action
     else {
         panic!("expected the entry to create a fixup commit");
     };
     assert_eq!(action_repo_id, repo_id);
+    assert_eq!(commit_id, reword_commit_id(REWORD_OLDER_SHA));
     assert_eq!(message, "fixup! b");
+
+    // Running the entry checks the target again: a commit whose place in
+    // HEAD's history is unknown is refused.
+    assert_eq!(
+        crate::view::panels::popover::fixup_target_blocker_for_test(
+            &repo,
+            &reword_commit_id(REWORD_OLDER_SHA)
+        ),
+        None
+    );
+    assert!(
+        crate::view::panels::popover::fixup_target_blocker_for_test(
+            &repo,
+            &reword_commit_id("dddddddddddddddddddddddddddddddddddddddd")
+        )
+        .is_some()
+    );
+
+    // Git Undo only records commits on a branch.
+    repo.head_branch = Loadable::Ready("HEAD".to_string());
+    show_rewordable_commit(cx, &view, repo);
+    let (disabled, reason, _) = fixup_menu_entry(cx, &view, repo_id, REWORD_OLDER_SHA);
+    assert!(disabled, "detached HEAD");
+    assert_eq!(
+        reason.as_deref(),
+        Some("Check out a branch to create a fixup commit")
+    );
 }
 
 #[gpui::test]

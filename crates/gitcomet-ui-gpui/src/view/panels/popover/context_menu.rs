@@ -30,6 +30,8 @@ pub(super) mod file_history_commit;
 mod file_list_folder;
 mod file_list_layout;
 mod fixup_commit;
+#[cfg(test)]
+pub(in crate::view) use fixup_commit::fixup_target_blocker as fixup_target_blocker_for_test;
 mod focus;
 mod history_branch_filter;
 mod history_refs;

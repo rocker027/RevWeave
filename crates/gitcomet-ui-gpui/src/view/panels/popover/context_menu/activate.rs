@@ -908,19 +908,35 @@ impl PopoverHost {
                     let _ = root_view.request(RootRequest::SetCommitSkipHooks(enabled), None, cx);
                 });
             }
-            ContextMenuAction::CreateFixupCommit { repo_id, message } => {
-                self.store.dispatch(Msg::Commit {
-                    repo_id,
-                    request: gitcomet_state::model::CommitRequest {
-                        message,
-                        amend: false,
-                        push_after_commit: false,
-                        hooks: gitcomet_core::services::GitHooks::from_skip(
-                            self.commit_skip_hooks_enabled,
-                        ),
-                        stage_paths: Vec::new(),
-                    },
-                });
+            ContextMenuAction::CreateFixupCommit {
+                repo_id,
+                commit_id,
+                message,
+            } => {
+                let blocker = self
+                    .state
+                    .repos
+                    .iter()
+                    .find(|repo| repo.id == repo_id)
+                    .map_or(Some("The repository is unavailable."), |repo| {
+                        super::fixup_commit::fixup_target_blocker(repo, &commit_id)
+                    });
+                if let Some(blocker) = blocker {
+                    self.push_toast(components::ToastKind::Warning, blocker.to_owned(), cx);
+                } else {
+                    self.store.dispatch(Msg::Commit {
+                        repo_id,
+                        request: gitcomet_state::model::CommitRequest {
+                            message,
+                            amend: false,
+                            push_after_commit: false,
+                            hooks: gitcomet_core::services::GitHooks::from_skip(
+                                self.commit_skip_hooks_enabled,
+                            ),
+                            stage_paths: Vec::new(),
+                        },
+                    });
+                }
             }
             ContextMenuAction::UseCommitMessage { message } => {
                 self.details_pane.update(cx, |pane, cx| {

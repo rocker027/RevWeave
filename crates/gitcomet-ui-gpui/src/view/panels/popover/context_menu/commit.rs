@@ -842,6 +842,7 @@ fn model_with_header(
     }
     items.push(super::fixup_commit::entry(
         repo_id,
+        commit_id,
         fixup_subject,
         fixup_blocker.is_some() || worktree_finish_busy,
         language,

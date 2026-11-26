@@ -22,6 +22,8 @@ mod commit_mainline;
 mod commit_prompt;
 pub(in super::super) mod context_menu;
 pub(in crate::view) use context_menu::compare_with_mark_label;
+#[cfg(test)]
+pub(in crate::view) use context_menu::fixup_target_blocker_for_test;
 mod create_branch_from_ref_prompt;
 mod create_tag_prompt;
 mod delete_branches_confirm;

@@ -494,6 +494,7 @@ pub(in crate::view) enum ContextMenuAction {
     /// already `fixup! <subject>`.
     CreateFixupCommit {
         repo_id: RepoId,
+        commit_id: CommitId,
         message: String,
     },
     StageSelectionOrPath {

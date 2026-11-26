@@ -1,7 +1,8 @@
 //! "Create fixup commit" in the history's commit menu: commits what is staged
 //! as `fixup! <subject>`, so a later autosquash folds it into that commit.
-//! It only adds a commit on HEAD, which Git Undo can take back; folding it
-//! into the target is left to the interactive rebase editor's autosquash.
+//! It only adds a commit on the checked-out branch, which Git Undo can take
+//! back; folding it into the target is left to the interactive rebase
+//! editor's autosquash.
 
 use super::*;
 use crate::localization::Language;
@@ -32,6 +33,18 @@ pub(super) fn fixup_blocker(
     if repo.history_rewrite_busy() {
         return Some("Finish the running Git operation to create a fixup commit");
     }
+    // While these reload, a merge or rebase may still be waiting to be
+    // concluded, and a plain commit would conclude it.
+    let operations_known = repo.merge_commit_message.ready().is_some()
+        && repo.sequencer_state.ready().is_some()
+        && repo.rebase_in_progress.ready().is_some();
+    if !operations_known {
+        return Some("Loading the repository state…");
+    }
+    // Git Undo only records commits on a branch.
+    if !matches!(&repo.head_branch, Loadable::Ready(head) if !head.is_empty() && head != "HEAD") {
+        return Some("Check out a branch to create a fixup commit");
+    }
     match repo.staged_status_entries() {
         None => return Some("Loading the working tree status…"),
         Some([]) => return Some("Stage the changes to fold into this commit first"),
@@ -44,13 +57,31 @@ pub(super) fn fixup_blocker(
         repo.first_parent_position_from_head(commit_id),
         FirstParentPosition::Linear { .. }
     );
-    (judged && !on_head_history)
-        .then_some("Only commits in the current branch's history can get a fixup commit")
+    (judged && !on_head_history).then_some(NOT_ON_HEAD_HISTORY)
+}
+
+const NOT_ON_HEAD_HISTORY: &str =
+    "Only commits in the current branch's history can get a fixup commit";
+
+/// Rechecks the target when the entry runs. The menu can show the entry for a
+/// row whose place in HEAD's history was not known yet (a sidebar tag, or a
+/// row whose selection had not landed); by now it is, and an unknown place
+/// counts as off HEAD's history.
+pub(in crate::view) fn fixup_target_blocker(
+    repo: &RepoState,
+    commit_id: &CommitId,
+) -> Option<&'static str> {
+    (!matches!(
+        repo.first_parent_position_from_head(commit_id),
+        FirstParentPosition::Linear { .. }
+    ))
+    .then_some(NOT_ON_HEAD_HISTORY)
 }
 
 /// The menu entry, disabled while [`fixup_blocker`] names a reason.
 pub(super) fn entry(
     repo_id: RepoId,
+    commit_id: &CommitId,
     summary: Option<&str>,
     disabled: bool,
     language: Language,
@@ -64,6 +95,7 @@ pub(super) fn entry(
         disabled,
         action: Box::new(ContextMenuAction::CreateFixupCommit {
             repo_id,
+            commit_id: commit_id.clone(),
             message: fixup_message(summary.unwrap_or_default()),
         }),
     }
