@@ -41,10 +41,10 @@
 | # | 切片 | 依賴 | 暫定分級／成本 | 狀態 |
 | --- | --- | --- | --- | --- |
 | S1 | reflog 右鍵建立分支 | 無 | L2／S | 已提交 `0622ca71`，測試與審查通過 |
-| S2 | commit 右鍵「用已暫存變更建立 fixup commit」 | 無 | L2／S–M | 已提交 `d5f58d75`，測試通過，審查中 |
-| S3 | 圖譜模式：模式狀態列＋列 chip 泛化 | 無 | L2／M | 併入 S4：沒有第二個使用者前不先抽象 |
-| S4 | 引導式 bisect | S3 | L2 或 L3 待重判／M–L | 待 S3 |
-| S5 | rebase 編輯器 `Alt-↑/↓` 移列 | 無 | L1／S | 已提交 `1d84be36`，測試通過 |
+| S2 | commit 右鍵「用已暫存變更建立 fixup commit」 | 無 | L2／S–M | 已提交 `d5f58d75`、審查修正 `ff9fa8d5`，實機驗證通過 |
+| S3 | 圖譜模式：模式狀態列＋列 chip 泛化 | 無 | L2／M | 併入 S4：改用既有 `HistoryRowAnnotation` 列標記，不另建抽象 |
+| S4 | 引導式 bisect | S3 | L2（複雜）／M–L | 已提交 `07664043`～`7d4a1309`，實機驗證與 Codex 審查通過 |
+| S5 | rebase 編輯器 `Alt-↑/↓` 移列 | 無 | L1／S | 已提交 `1d84be36`、審查修正 `b1eaa4c1`，實機驗證通過 |
 | S6 | 行級丟棄安全 | 使用者裁決 | 一期 L2／S，可復原 L3／M | 受阻 |
 | S7 | 把已暫存變更併入舊 commit | S2、S3 | L3／M–L | 待前置 |
 | S8 | 擴大 CAS Undo 至 checkout／rebase | G3 審查解除 | L3／L | 受阻 |
@@ -119,4 +119,9 @@ repo 內沒有 reflog 面板的說明文件。在 `docs/` 新增一段短說明�
 - 2026-11-27：使用者裁決 F 鍵依 GitKraken 不綁，並授權依序實作。S1、S2、S5 已在 `feat/graph-multi-ref-gitkraken` 實作並提交（`0622ca71`、`d5f58d75`、`1d84be36`）。SDLC 紀錄：`AISDLC-2026-1126-revweave-lazygit-reflog-branch`（S1，已完成）、`AISDLC-2026-1127-revweave-fixup-commit`（S2）。
 - S2 採直接提交、不開對話框，訊息為 `fixup! <標題>`；同名提交的配對問題留給 S7。
 - S5 順帶補上 `docs/shortcuts.md` 既有 `Shift-F10` 列缺少的繁中翻譯，原本 `traditional_chinese_reference_covers_documented_groups_actions_and_notes` 因此失敗。
-- 下一步：S3＋S4（bisect）跨 core、後端、狀態與 UI，開工前確認範圍。S6 等使用者裁決；S8 等 G3 審查狀態查明。
+- 2026-11-27：S4 依「右鍵標記、工具列控制、列標記、不淡化」範圍實作。S3 改用既有擴充列標記機制（`HistoryRowAnnotation`）承載 bisect 標記，未另建「圖譜模式」抽象。SDLC 紀錄：`AISDLC-2026-1127-revweave-guided-bisect`。
+- 實機驗證：debug App 以 `GITCOMET_PROFILE_ROOT` 隔離設定，操作 `~/Documents/code/orca-worktree-test` 的暫時分支 `revweave-verify`（驗證後已刪除、切回 `main`）。S1 救回分支與 Undo、S2 建立 fixup 與 Undo、S5 鍵盤移列、S4 完整流程皆通過。驗證中發現並修正：bisect 狀態文字單複數與最後一步（`0f931e0a`）、全部候選被略過被當成錯誤（`8ba835da`）。
+- 2026-11-27：Codex（gpt-6.2-astra xhigh）審查共六輪。第一輪 3 高 8 中 2 低，複審 3 高 6 中 2 低，之後三輪各補互斥與相容性缺口；修正提交 `9ab783c7`、`c2e15d73`、`879b0659`、`7d6354ec`、`334c0d50`、`7d4a1309`。第六輪結論：沒有阻擋合併的項目。修正後再以實機重跑 bisect，並以 Apple Git 2.50.1 重跑整合測試。
+- 已知限制（Codex 同意不阻擋）：淺層歷史邊界改變時 fixup 目標可能離開第一父系；同一列兩側都有擴充選單時，bisect 標記使左側選單失效；bisect 動作在寫入前被拒仍會清空 Git Undo。
+- 既有測試失敗（與本次無關）：`the_terminal_toggle_defaults_to_the_action_bar`、`the_views_are_tabs_in_the_action_bar`、`schedule_effect_dispatches_many_variants_with_repo_present`（DeleteBranch 計數）、5 個 LFS 測試（本機無 git lfs）。
+- 下一步：S6 等使用者裁決丟棄做法；S7 需先改為依 SHA 配對 fixup；S8 等 G3 審查狀態查明。
