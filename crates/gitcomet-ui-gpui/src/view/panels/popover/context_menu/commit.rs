@@ -847,6 +847,14 @@ fn model_with_header(
         fixup_blocker.is_some() || worktree_finish_busy,
         language,
     ));
+    if let Some(repo) = this.active_repo().filter(|repo| repo.id == repo_id) {
+        let (bisect_items, bisect_blocker) =
+            super::bisect::entries(repo, commit_id, worktree_finish_busy, language);
+        if let Some(blocker) = bisect_blocker {
+            entry_tooltips.insert(items.len(), blocker.into());
+        }
+        items.extend(bisect_items);
+    }
     items.push(revert_entry(
         repo_id,
         commit_id,

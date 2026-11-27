@@ -490,6 +490,11 @@ pub(in crate::view) enum ContextMenuAction {
     UseCommitMessage {
         message: String,
     },
+    /// A `git bisect` step in the repository's worktree.
+    Bisect {
+        repo_id: RepoId,
+        step: gitcomet_state::msg::BisectStep,
+    },
     /// Commit what is staged as a fixup for an older commit; `message` is
     /// already `fixup! <subject>`.
     CreateFixupCommit {

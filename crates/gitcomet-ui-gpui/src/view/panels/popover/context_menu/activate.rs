@@ -908,6 +908,9 @@ impl PopoverHost {
                     let _ = root_view.request(RootRequest::SetCommitSkipHooks(enabled), None, cx);
                 });
             }
+            ContextMenuAction::Bisect { repo_id, step } => {
+                self.store.dispatch(Msg::Bisect { repo_id, step });
+            }
             ContextMenuAction::CreateFixupCommit {
                 repo_id,
                 commit_id,

@@ -4,6 +4,7 @@ use gitcomet_core::domain::Upstream;
 
 mod activate;
 mod annex;
+pub(in crate::view) mod bisect;
 mod branch;
 pub(super) mod branch_drop;
 mod branch_group;

@@ -213,6 +213,148 @@ fn sequencer_banner(
     })
 }
 
+impl ActionBarView {
+    /// BISECTING, the session's status, and Good / Bad / Skip for the
+    /// checked-out commit plus End. Once the first bad commit is found its
+    /// status selects it in History.
+    #[allow(clippy::too_many_arguments)]
+    fn bisect_controls(
+        &self,
+        repo_id: RepoId,
+        bisect: &gitcomet_core::services::BisectState,
+        head: Option<CommitId>,
+        blocker: Option<&'static str>,
+        end_disabled: bool,
+        language: Language,
+        cx: &mut gpui::Context<Self>,
+    ) -> gpui::Div {
+        use gitcomet_core::services::BisectVerdict;
+        use gitcomet_state::msg::BisectStep;
+        let theme = self.theme;
+        let status = bisect_status(bisect, language);
+        let mark_blocker = blocker.or_else(|| {
+            head.is_none()
+                .then_some("The checked-out commit is not known yet")
+        });
+        let mark_button = |cx: &mut gpui::Context<Self>,
+                           id: &'static str,
+                           label: &'static str,
+                           verdict: BisectVerdict| {
+            let head = head.clone();
+            components::Button::new(id, label)
+                .style(components::ButtonStyle::Outlined)
+                .disabled(mark_blocker.is_some())
+                .on_click(theme, cx, move |this, _e: &ClickEvent, _w, _cx| {
+                    if let Some(commit_id) = head.clone() {
+                        this.store.dispatch(Msg::Bisect {
+                            repo_id,
+                            step: BisectStep::Mark { verdict, commit_id },
+                        });
+                    }
+                })
+                .when_some(mark_blocker, |button, text| {
+                    button.gitcomet_tooltip(theme, text.into())
+                })
+        };
+        let status_element = match bisect.first_bad.clone() {
+            Some(first_bad) => components::Button::new("bisect_first_bad", status)
+                .style(components::ButtonStyle::Subtle)
+                .on_click(theme, cx, move |this, _e: &ClickEvent, _w, _cx| {
+                    this.store.dispatch(Msg::SelectCommit {
+                        request_id: None,
+                        repo_id,
+                        commit_id: first_bad.clone(),
+                    });
+                })
+                .into_any_element(),
+            None => div()
+                .text_size(theme.ui_text(12.0))
+                .text_color(theme.colors.foreground.secondary)
+                .child(status)
+                .into_any_element(),
+        };
+        div()
+            .debug_selector(|| "bisect_controls".to_string())
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap_1()
+            .child(
+                div()
+                    .text_size(theme.ui_text(12.0))
+                    .text_color(theme.colors.status.warning.foreground)
+                    .font_weight(FontWeight::BOLD)
+                    .child(language.text("BISECTING", "Bisect 中")),
+            )
+            .child(status_element)
+            .child(mark_button(
+                cx,
+                "bisect_good",
+                language.text("Good", "好"),
+                BisectVerdict::Good,
+            ))
+            .child(mark_button(
+                cx,
+                "bisect_bad",
+                language.text("Bad", "壞"),
+                BisectVerdict::Bad,
+            ))
+            .child(mark_button(
+                cx,
+                "bisect_skip",
+                language.text("Skip", "略過"),
+                BisectVerdict::Skip,
+            ))
+            .child(
+                components::Button::new("bisect_reset", language.text("End", "結束"))
+                    .style(components::ButtonStyle::Danger)
+                    .disabled(end_disabled)
+                    .on_click(theme, cx, move |this, _e: &ClickEvent, _w, _cx| {
+                        this.store.dispatch(Msg::Bisect {
+                            repo_id,
+                            step: BisectStep::Reset,
+                        });
+                    })
+                    .gitcomet_tooltip(
+                        theme,
+                        language
+                            .text(
+                                "End the bisect and return to where it started",
+                                "結束 bisect，回到開始時的位置",
+                            )
+                            .into(),
+                    ),
+            )
+    }
+}
+
+/// The bisect controls' status: what the session needs next, how far it has
+/// left, or the first bad commit once found.
+fn bisect_status(bisect: &gitcomet_core::services::BisectState, language: Language) -> String {
+    if let Some(first_bad) = &bisect.first_bad {
+        let short = first_bad.as_ref().get(..7).unwrap_or(first_bad.as_ref());
+        return match language {
+            Language::English => format!("First bad: {short}"),
+            Language::TraditionalChinese => format!("第一個壞版本：{short}"),
+        };
+    }
+    if bisect.bad.is_none() {
+        return language
+            .text("Mark a bad commit", "請標記壞版本")
+            .to_owned();
+    }
+    if bisect.good.is_empty() {
+        return language
+            .text("Mark a good commit", "請標記好版本")
+            .to_owned();
+    }
+    match (bisect.steps, language) {
+        (Some(steps), Language::English) => format!("About {steps} steps left"),
+        (Some(steps), Language::TraditionalChinese) => format!("約剩 {steps} 步"),
+        (None, _) => language.text("Testing", "測試中").to_owned(),
+    }
+}
+
 fn truncate_badge_label_to(label: &str, max_chars: usize) -> SharedString {
     let mut chars = label.chars();
     let head: String = chars.by_ref().take(max_chars).collect();
@@ -830,6 +972,22 @@ impl BarItemOwner for ActionBarView {
             .active_repo()
             .map(active_sequencer_state)
             .and_then(|state| sequencer_banner(state, language));
+        // The bisect controls stand in for the sequencer's while a session
+        // runs: (session, checked-out commit, why marking is unavailable).
+        let bisect_controls = self
+            .active_repo()
+            .filter(|_| !is_merging && sequencer_banner.is_none())
+            .and_then(|repo| match &repo.bisect {
+                Loadable::Ready(Some(bisect)) => Some((
+                    repo.id,
+                    bisect.clone(),
+                    repo.head_commit_id(),
+                    crate::view::panels::popover::context_menu::bisect::bisect_mark_blocker(repo),
+                    repo.local_actions_in_flight > 0 || repo.is_bare(),
+                )),
+                _ => None,
+            });
+        let has_bisect_controls = bisect_controls.is_some();
         let rebase_has_unstaged_conflicts =
             self.active_repo().is_some_and(|r| r.has_unstaged_conflicts);
         // A revert shows REVERT_HEAD while its commit step still runs; the
@@ -1831,7 +1989,25 @@ impl BarItemOwner for ActionBarView {
                             ),
                     )
                 });
-            if has_active_finish_run || is_merging || sequencer_banner.is_some() {
+            let operation_controls = operation_controls.when_some(
+                bisect_controls,
+                |d, (repo_id, bisect, head, blocker, end_disabled)| {
+                    d.child(self.bisect_controls(
+                        repo_id,
+                        &bisect,
+                        head,
+                        blocker,
+                        end_disabled,
+                        language,
+                        cx,
+                    ))
+                },
+            );
+            if has_active_finish_run
+                || is_merging
+                || sequencer_banner.is_some()
+                || has_bisect_controls
+            {
                 items.push(BuiltinBarItem::OperationControls, operation_controls);
             }
         }
@@ -2025,6 +2201,39 @@ mod tests {
         assert_eq!(
             stash_pop_target(Some(&bare), Language::English),
             StashPopTarget::Unavailable(gitcomet_core::domain::WORKING_TREE_REQUIRED_MESSAGE)
+        );
+    }
+
+    #[test]
+    fn bisect_status_says_what_the_session_needs() {
+        use gitcomet_core::services::BisectState;
+        let id = |sha: &str| CommitId(sha.into());
+        let status = |state: BisectState| bisect_status(&state, Language::English);
+        assert_eq!(status(BisectState::default()), "Mark a bad commit");
+        assert_eq!(
+            status(BisectState {
+                bad: Some(id("b")),
+                ..Default::default()
+            }),
+            "Mark a good commit"
+        );
+        assert_eq!(
+            status(BisectState {
+                bad: Some(id("b")),
+                good: vec![id("g")],
+                steps: Some(3),
+                ..Default::default()
+            }),
+            "About 3 steps left"
+        );
+        assert_eq!(
+            status(BisectState {
+                bad: Some(id("0123456789abcdef")),
+                good: vec![id("g")],
+                first_bad: Some(id("0123456789abcdef")),
+                ..Default::default()
+            }),
+            "First bad: 0123456"
         );
     }
 

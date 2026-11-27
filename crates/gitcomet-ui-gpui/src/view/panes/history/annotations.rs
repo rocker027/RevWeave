@@ -88,10 +88,26 @@ impl HistoryView {
         menu(&context, commit, target, cx)
     }
 
+    /// The row's annotation: every annotator's, merged, then the host's own
+    /// `git bisect` verdict leading the marks.
+    pub(in crate::view) fn history_row(
+        &self,
+        repo: &RepoState,
+        commit: &gitcomet_core::domain::Commit,
+        cx: &App,
+    ) -> RowAnnotation {
+        let mut row = self.annotator_history_row(repo, commit, cx);
+        if let Some(mark) = bisect_row_mark(repo, &commit.id, self.theme) {
+            // An annotator's leading marks keep their places, and their menu.
+            row.annotation.leading.push(mark);
+        }
+        row
+    }
+
     /// The row's annotation, merged from every annotator, with who drew each
     /// edge's marks: a later annotator's marks on an edge are drawn instead
     /// of an earlier one's.
-    pub(in crate::view) fn history_row(
+    fn annotator_history_row(
         &self,
         repo: &RepoState,
         commit: &gitcomet_core::domain::Commit,
@@ -199,4 +215,32 @@ impl HistoryView {
         }
         annotations.headers.get(&key).cloned().unwrap_or_default()
     }
+}
+
+/// The chip a commit gets while `git bisect` runs: the first bad commit once
+/// found, else the verdict recorded for it. Not cached with the annotators'
+/// marks, which do not follow the session; the session holds a handful of
+/// commits, so the lookup stays cheap per row.
+pub(in crate::view) fn bisect_row_mark(
+    repo: &RepoState,
+    commit_id: &CommitId,
+    theme: AppTheme,
+) -> Option<gitcomet_extension_api::RowMark> {
+    let Loadable::Ready(Some(bisect)) = &repo.bisect else {
+        return None;
+    };
+    let status = &theme.colors.status;
+    let (label, color) = if bisect.first_bad.as_ref() == Some(commit_id) {
+        ("first bad", status.danger.foreground)
+    } else if bisect.bad.as_ref() == Some(commit_id) {
+        ("bad", status.danger.foreground)
+    } else if bisect.good.contains(commit_id) {
+        ("good", status.success.foreground)
+    } else if bisect.skipped.contains(commit_id) {
+        ("skip", theme.colors.foreground.secondary)
+    } else {
+        return None;
+    };
+    let color: gpui::Hsla = palette::IntoColor::into_color(color);
+    Some(gitcomet_extension_api::RowMark::new(color).with_label(label))
 }
