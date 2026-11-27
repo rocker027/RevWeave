@@ -186,7 +186,23 @@ fn shown_after(cx: &mut gpui::TestAppContext, case: Case) -> Option<String> {
             draw_and_drain_test_window(cx);
             click(cx, &format!("status_stage_button_{}_{section}_0", REPO.0));
         }
-        Trigger::Key(key) => cx.simulate_keystrokes(key),
+        Trigger::Key(key) => {
+            cx.simulate_keystrokes(key);
+            draw_and_drain_test_window(cx);
+            // U in an unstaged diff asks before discarding; accept it.
+            let asks = cx.update(|_, app| {
+                matches!(
+                    view.read(app)
+                        .popover_host
+                        .read(app)
+                        .popover_kind_for_tests(),
+                    Some(PopoverKind::DiscardLinesConfirm { .. })
+                )
+            });
+            if asks {
+                click(cx, "discard_lines_go");
+            }
+        }
         Trigger::StageHunkMenu => cx.update(|window, app| {
             let pane = view.read(app).diff_renderer.read(app);
             let src_ix = (0..pane.patch_diff_row_len())

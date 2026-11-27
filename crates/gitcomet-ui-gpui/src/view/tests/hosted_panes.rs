@@ -1802,20 +1802,28 @@ fn difftastic_file_in<'a>(
     (dir, store, view, cx, renderer)
 }
 
-/// Discarding lines with the line engine reaches the repository from a hosted
-/// pane, as staging them does: the pane's store forwards the patch.
-#[gpui::test]
-fn discarding_lines_in_a_hosted_pane_reverts_them(cx: &mut gpui::TestAppContext) {
+/// `rust_repository`'s `path` in a Changes pane on its unstaged diff,
+/// compared line by line.
+fn line_engine_file<'a>(
+    cx: &'a mut gpui::TestAppContext,
+    path: &str,
+) -> (
+    tempfile::TempDir,
+    AppStore,
+    gpui::Entity<GitCometView>,
+    &'a mut gpui::VisualTestContext,
+    gpui::Entity<crate::view::panes::diff::DiffRenderer>,
+) {
     let (dir, store, view, cx) = open_repository_in(cx, Arc::new(TestBackend), rust_repository());
     let (list_id, changes) = open_changes_view(cx, &view, &store);
     click_debug_selector(
         cx,
-        selector(format!("hosted_file_list_{list_id}_file_b.rs")),
+        selector(format!("hosted_file_list_{list_id}_file_{path}")),
     );
     let pane = cx.update(|_window, app| changes.read(app).current().cloned().unwrap());
     cx.update(|_window, app| {
         pane.set_target(
-            DiffTarget::working_tree("b.rs".into(), DiffArea::Unstaged),
+            DiffTarget::working_tree(path.into(), DiffArea::Unstaged),
             app,
         );
     });
@@ -1828,18 +1836,26 @@ fn discarding_lines_in_a_hosted_pane_reverts_them(cx: &mut gpui::TestAppContext)
             .cloned()
             .unwrap()
     });
-    settle(cx, &view, &store, "b.rs compared line by line", |cx| {
+    settle(cx, &view, &store, "the file compared line by line", |cx| {
         cx.update(|_window, app| {
             let renderer = renderer.read(app);
             !renderer.structural_diff_active()
                 && renderer
                     .rendered_diff_target()
                     .and_then(DiffTarget::file_path)
-                    == Some(Path::new("b.rs"))
+                    == Some(Path::new(path))
                 && renderer.is_file_diff_view_active()
                 && renderer.diff_visible_len() > 0
         })
     });
+    (dir, store, view, cx, renderer)
+}
+
+/// Discarding lines with the line engine reaches the repository from a hosted
+/// pane, as staging them does: the pane's store forwards the patch.
+#[gpui::test]
+fn discarding_lines_in_a_hosted_pane_reverts_them(cx: &mut gpui::TestAppContext) {
+    let (dir, store, view, cx, renderer) = line_engine_file(cx, "b.rs");
     cx.update(|_window, app| {
         renderer.update(app, |pane, cx| {
             let last = pane.diff_visible_len() - 1;
@@ -1862,6 +1878,53 @@ fn discarding_lines_in_a_hosted_pane_reverts_them(cx: &mut gpui::TestAppContext)
                 .is_ok_and(|text| text == "pub fn b() -> i32 {\n    1\n}\n")
         },
     );
+}
+
+/// From a hosted pane too, U asks first, and the confirmation checks the
+/// pane's own file: it reverts the lines, or nothing once the file changed
+/// in a way the old patch would still apply to.
+#[gpui::test]
+fn a_hosted_line_discard_asks_and_skips_a_changed_file(cx: &mut gpui::TestAppContext) {
+    // The appended line leaves the old patch applicable, so only the
+    // confirmation's check keeps it from running.
+    for edit in [None, Some("fn b() -> i32 {\n    1\n}\n// tail\n")] {
+        let (dir, store, view, cx, renderer) = line_engine_file(cx, "b.rs");
+        cx.update(|window, app| {
+            renderer.update(app, |pane, cx| {
+                let last = pane.diff_visible_len() - 1;
+                pane.diff_selection_anchor = Some(0);
+                pane.diff_selection_range = Some((0, last));
+                assert!(pane.request_discard_lines_confirm(window, cx), "{edit:?}");
+            })
+        });
+        cx.run_until_parked();
+        if let Some(text) = edit {
+            std::fs::write(dir.path().join("b.rs"), text).unwrap();
+        }
+        let go = cx
+            .debug_bounds("discard_lines_go")
+            .unwrap_or_else(|| panic!("{edit:?}: the confirmation's Discard is drawn"))
+            .center();
+        cx.simulate_mouse_move(go, None, gpui::Modifiers::default());
+        cx.simulate_mouse_down(go, gpui::MouseButton::Left, gpui::Modifiers::default());
+        cx.simulate_mouse_up(go, gpui::MouseButton::Left, gpui::Modifiers::default());
+        match edit {
+            None => settle(cx, &view, &store, "b.rs reverted", |_| {
+                // Git unlinks before rewriting, so a missing file is "not yet".
+                std::fs::read_to_string(dir.path().join("b.rs"))
+                    .is_ok_and(|text| text == "pub fn b() -> i32 {\n    1\n}\n")
+            }),
+            Some(text) => {
+                cx.run_until_parked();
+                crate::view::test_support::drain_store_worker(&view, cx);
+                assert_eq!(
+                    std::fs::read_to_string(dir.path().join("b.rs")).unwrap(),
+                    text,
+                    "the edit made while asking is kept"
+                );
+            }
+        }
+    }
 }
 
 /// After a right-click on a Difftastic line, with the outlined block or text

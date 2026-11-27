@@ -69,13 +69,17 @@ pub(super) fn panel(
                 .style(components::ButtonStyle::Danger)
                 .on_click(theme, cx, move |this, _e, window, cx| {
                     let opened_on = this.discard_confirm_source.take();
+                    // Read while the pane that opened the dialog is still the
+                    // one bound: closing hands the host back to the main diff.
+                    let current = patch
+                        .as_ref()
+                        .and_then(|_| this.diff_renderer.read(cx).worktree_source_fingerprint());
                     this.close_popover_and_restore_focus(window, cx);
                     match &patch {
                         Some(patch) => {
                             // Git applies a stale patch wherever its context
                             // matches, so a file changed since the dialog
                             // opened could lose other lines than were shown.
-                            let current = this.diff_renderer.read(cx).worktree_source_fingerprint();
                             if opened_on.is_none() || opened_on != current {
                                 this.push_toast(
                                     components::ToastKind::Error,
