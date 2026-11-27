@@ -442,6 +442,12 @@ pub struct BisectState {
     pub steps: Option<usize>,
     /// The first bad commit, once it is the only candidate left.
     pub first_bad: Option<CommitId>,
+    /// Commits in the range still in question, the bad one included (git's
+    /// `bisect_all`).
+    pub candidates: Option<usize>,
+    /// Every candidate but the bad commit was skipped: git cannot narrow the
+    /// first bad commit down further.
+    pub only_skipped_left: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

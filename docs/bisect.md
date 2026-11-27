@@ -36,5 +36,10 @@ When only one candidate is left, the toolbar shows **First bad: <sha>** and that
 row is marked `first bad`. Click the status to select the commit in History. The
 verdict buttons turn off; choose **End** to finish.
 
+If every commit left besides the bad one was skipped, Git cannot narrow it down:
+the toolbar shows **Only skipped commits left**, and the first bad commit is the
+bad one or one of the skipped ones. Mark a skipped commit good or bad to go on, or
+choose **End**.
+
 The graph follows the history scope: with a scope reachable from HEAD alone, the
 commits after the one under test are not drawn until the session ends.

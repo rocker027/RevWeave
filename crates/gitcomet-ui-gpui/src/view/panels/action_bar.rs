@@ -348,6 +348,11 @@ fn bisect_status(bisect: &gitcomet_core::services::BisectState, language: Langua
             .text("Mark a good commit", "請標記好版本")
             .to_owned();
     }
+    if bisect.only_skipped_left {
+        return language
+            .text("Only skipped commits left", "只剩略過的提交")
+            .to_owned();
+    }
     // Git's `bisect_steps` counts the tests left after the checked-out one.
     match (bisect.steps, language) {
         (Some(0), _) => language
@@ -2239,6 +2244,13 @@ mod tests {
         };
         assert_eq!(status(with_steps(1)), "About 1 step left");
         assert_eq!(status(with_steps(0)), "Last commit to test");
+        assert_eq!(
+            status(BisectState {
+                only_skipped_left: true,
+                ..with_steps(0)
+            }),
+            "Only skipped commits left"
+        );
         assert_eq!(
             status(BisectState {
                 bad: Some(id("0123456789abcdef")),

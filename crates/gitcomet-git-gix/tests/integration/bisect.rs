@@ -99,3 +99,31 @@ fn bisect_finds_the_first_bad_commit_and_resets() {
     );
     assert_eq!(git_stdout(dir.path(), &["rev-parse", "HEAD"]), commits[4]);
 }
+
+#[test]
+fn skipping_every_candidate_left_is_a_result_not_an_error() {
+    test_git_env::ensure_initialized();
+    let dir = tempfile::tempdir().unwrap();
+    let commits = repo_with_a_regression(dir.path());
+    let repo = open(dir.path());
+    repo.bisect_mark_with_output(BisectVerdict::Bad, &CommitId(commits[4].clone().into()))
+        .expect("mark the tip bad");
+    repo.bisect_mark_with_output(BisectVerdict::Good, &CommitId(commits[0].clone().into()))
+        .expect("mark the root good");
+    // Git checks out c3 first, then c4.
+    assert_eq!(git_stdout(dir.path(), &["rev-parse", "HEAD"]), commits[2]);
+    repo.bisect_mark_with_output(BisectVerdict::Good, &CommitId(commits[2].clone().into()))
+        .expect("mark c3 good");
+    assert_eq!(git_stdout(dir.path(), &["rev-parse", "HEAD"]), commits[3]);
+
+    let output = repo
+        .bisect_mark_with_output(BisectVerdict::Skip, &CommitId(commits[3].clone().into()))
+        .expect("skipping the last candidate ends the search, not in an error");
+    assert_eq!(output.exit_code, Some(2));
+    let left = state(&repo).expect("the session goes on");
+    assert!(left.only_skipped_left, "{left:?}");
+    assert_eq!(left.first_bad, None);
+    assert_eq!(left.skipped, vec![CommitId(commits[3].clone().into())]);
+
+    repo.bisect_reset_with_output().expect("reset");
+}
