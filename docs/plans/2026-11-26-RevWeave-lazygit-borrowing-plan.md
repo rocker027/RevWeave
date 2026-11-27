@@ -127,5 +127,5 @@ repo 內沒有 reflog 面板的說明文件。在 `docs/` 新增一段短說明�
 - 2026-11-27：使用者裁決 S6 採兩段式、先做防呆；S7 先不做；S8 先暫緩。S6 一期提交 `a5b8106a`、`d7d1b29c`、`fc557c95`、`b0d40d25`、`efc671a1`、`ada72fb0`。SDLC 紀錄：`AISDLC-2026-1127-revweave-discard-lines-guard`。
 - S6 審查：Codex 前一個 session 兩輪，終端結束後另開新 session 獨立複審；修正後結論為沒有阻擋合併的項目。修正重點：開框時固定 patch 並比對工作樹檔案指紋（符號連結記連結目標）、確認框依入口標明丟棄範圍（行、段、Difftastic 區塊）、補齊所有丟棄入口。
 - S6 已知限制：pop-out 視窗的確認框開在主視窗（diff 右鍵選單亦同，屬既有架構）；指紋在開框時取，patch 建立到開框之間的變更不在檢查內；只有 F3 外框時按 U 的標題仍寫「選取的行」；Difftastic 只選未變更行仍會開框，由後端回報無可套用變更。
-- S6 全量測試另發現 3 個 `smoke_tests::worktree_badges` 單跑失敗；本計畫未改 sidebar／smoke 檔，未在 base 實跑證明。
+- S6 全量測試（ada72fb0）：4478 passed、5 failed。除既有兩項外，3 個 `smoke_tests::worktree_badges` 在 base `4b66a31e` 同樣失敗，屬既有問題。Difftastic 右鍵「Discard block」與「Discard selected lines」已用暫存 Rust repo 實機驗證。
 - 下一步：S7 需先改為依 SHA 配對 fixup（使用者裁決先不做）；S8 等 G3 審查狀態查明（使用者裁決先暫緩）。可復原丟棄另案。
