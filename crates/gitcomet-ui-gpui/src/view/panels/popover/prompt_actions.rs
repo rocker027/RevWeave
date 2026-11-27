@@ -281,9 +281,9 @@ impl PopoverHost {
             } => discard_changes_confirm::panel(self, repo_id, area, path.clone(), cx),
             PopoverKind::DiscardLinesConfirm {
                 repo_id,
-                lines,
+                scope,
                 patch,
-            } => discard_lines_confirm::panel(self, repo_id, lines, patch.clone(), cx),
+            } => discard_lines_confirm::panel(self, repo_id, scope, patch.clone(), cx),
             PopoverKind::DiscardFolderChangesConfirm {
                 repo_id,
                 section,

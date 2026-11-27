@@ -73,7 +73,7 @@ pub(super) fn model(
                 action: Box::new(ContextMenuAction::OpenPopover {
                     kind: PopoverKind::DiscardLinesConfirm {
                         repo_id,
-                        lines: Some(lines_count),
+                        scope: DiscardScope::Lines(Some(lines_count)),
                         patch: discard_lines_patch.clone(),
                     },
                 }),
@@ -115,7 +115,7 @@ pub(super) fn model(
                 action: Box::new(ContextMenuAction::OpenPopover {
                     kind: PopoverKind::DiscardLinesConfirm {
                         repo_id,
-                        lines: None,
+                        scope: DiscardScope::Hunks(hunks_count),
                         patch: hunk_patch.clone(),
                     },
                 }),

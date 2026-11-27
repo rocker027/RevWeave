@@ -934,6 +934,7 @@ impl PopoverHost {
             context_menu_focus_handle,
             menu_invoker_focus: None,
             focus_return: None,
+            discard_confirm_source: None,
             markdown_image_approval: None,
             active_invoker: None,
             popover_opened_from_diff_panel: false,
@@ -1881,6 +1882,12 @@ impl PopoverHost {
         }
         self.focus_return = focus_return;
         self.markdown_image_approval = markdown_image_approval;
+        self.discard_confirm_source = match &kind {
+            PopoverKind::DiscardLinesConfirm { patch: Some(_), .. } => {
+                self.diff_renderer.read(cx).worktree_source_fingerprint()
+            }
+            _ => None,
+        };
         // Branch-collision prompts are also held in shared state. Replacing one
         // without resolving it leaves that state occupied, so the same
         // collision cannot emit a fresh prompt later.

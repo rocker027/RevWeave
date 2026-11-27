@@ -185,6 +185,22 @@ fn press_in(
     focus: Focus,
     key: &str,
 ) -> Pressed {
+    press_with(cx, content, area, mode, select, focus, key, None)
+}
+
+/// [`press_in`] that, with `edit_while_asking`, rewrites the file to it while
+/// the discard confirmation is open, before accepting it.
+#[allow(clippy::too_many_arguments)]
+fn press_with(
+    cx: &mut gpui::TestAppContext,
+    content: DiffContentMode,
+    area: DiffArea,
+    mode: DiffViewMode,
+    select: Select,
+    focus: Focus,
+    key: &str,
+    edit_while_asking: Option<&str>,
+) -> Pressed {
     let case = format!("{content:?} {area:?} {mode:?} {select:?} {focus:?} {key:?}");
     let dir = tempfile::tempdir().unwrap();
     // Unwind cleanup closes the app before the directory declared above it.
@@ -475,6 +491,9 @@ fn press_in(
         });
         if confirm {
             asked = true;
+            if let Some(text) = edit_while_asking {
+                std::fs::write(dir.path().join(PATH), text).unwrap();
+            }
             let go = cx
                 .debug_bounds("discard_lines_go")
                 .unwrap_or_else(|| panic!("{case}: the confirmation's Discard is drawn"))
@@ -572,6 +591,27 @@ fn u_in_an_unstaged_diff_discards_only_the_selected_rows(cx: &mut gpui::TestAppC
         );
         assert_eq!(pressed.index, BASE, "{mode:?}: discarding leaves the index");
     }
+}
+
+/// The confirmation discards what it showed or nothing: a file changed while
+/// it was open could take the old patch elsewhere, where its context matches.
+#[gpui::test]
+fn u_discards_nothing_when_the_file_changed_while_asking(cx: &mut gpui::TestAppContext) {
+    let changed = "zero\none\nTWO\nthree\nfour\nFIVE\n";
+    let pressed = press_with(
+        cx,
+        DiffContentMode::Full,
+        DiffArea::Unstaged,
+        DiffViewMode::Inline,
+        Select::Rows(&["-five", "+FIVE"]),
+        Focus::DiffPanel,
+        "u",
+        Some(changed),
+    );
+    assert!(pressed.asked, "U asks before discarding");
+    assert!(!pressed.acted, "a changed file must not be patched");
+    assert_eq!(pressed.worktree, changed, "the edit made meanwhile is kept");
+    assert_eq!(pressed.index, BASE);
 }
 
 #[gpui::test]

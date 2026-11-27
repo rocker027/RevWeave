@@ -1,7 +1,7 @@
 use super::DiffRenderer;
 use super::services::DiffCommand;
 use crate::view::{DiffTextRegion, DiffViewMode, components};
-use gitcomet_core::domain::{DiffArea, DiffTarget};
+use gitcomet_core::domain::{DiffArea, DiffLineKind, DiffTarget};
 use gitcomet_core::file_diff::FileDiffRowKind;
 use gitcomet_core::patch_action::{
     PatchActionError, PatchOperation, PreparedDiffPatch, SourceLineSelection,
@@ -15,6 +15,17 @@ use std::sync::Arc;
 #[cfg(test)]
 #[path = "diff_patch_tests.rs"]
 mod tests;
+
+/// The working-tree file a diff discard rewrites, as it is at one moment.
+/// A confirmation records it on opening and compares on Discard: Git applies
+/// a stale patch wherever its context matches, so a changed file could lose
+/// other lines than the dialog showed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::view) struct WorktreeSourceFingerprint {
+    path: std::path::PathBuf,
+    /// `None` while the file does not exist.
+    content: Option<u64>,
+}
 
 #[derive(Clone)]
 pub(in crate::view::panes::diff) struct PatchOrigin {
@@ -175,6 +186,23 @@ impl DiffRenderer {
             .map(|block| self.structural_source_lines(block, None))
     }
 
+    /// Whether `selection` takes a line Git's patch removes or adds, as the
+    /// patch builder decides. Difftastic's change blocks also take lines Git
+    /// counts unchanged, so they cannot tell.
+    fn structural_selection_has_changes(&self, selection: &SourceLineSelection) -> bool {
+        (0..self.patch_diff_row_len())
+            .filter_map(|ix| self.patch_diff_row(ix))
+            .any(|row| match row.kind {
+                DiffLineKind::Remove => row
+                    .old_line
+                    .is_some_and(|line| selection.old.contains(&line)),
+                DiffLineKind::Add => row
+                    .new_line
+                    .is_some_and(|line| selection.new.contains(&line)),
+                _ => false,
+            })
+    }
+
     fn open_structural_menu(
         &mut self,
         scopes: Vec<(&str, SourceLineSelection)>,
@@ -318,7 +346,7 @@ impl DiffRenderer {
         &mut self,
         selection: SourceLineSelection,
     ) -> bool {
-        if selection.old.is_empty() && selection.new.is_empty() {
+        if !self.structural_selection_has_changes(&selection) {
             return false;
         }
         let Some(origin) = self.patch_origin(PatchOperation::Discard) else {
@@ -412,6 +440,31 @@ impl DiffRenderer {
             },
             cx,
         );
+    }
+
+    /// The rendered working-tree diff's file as it is now, or `None` when
+    /// the diff is not of a working-tree file or the file cannot be read.
+    pub(in crate::view) fn worktree_source_fingerprint(&self) -> Option<WorktreeSourceFingerprint> {
+        use std::hash::{Hash, Hasher};
+        let Some(DiffTarget::WorkingTree { path, worktree, .. }) = self.rendered_diff_target()
+        else {
+            return None;
+        };
+        let root = match worktree {
+            Some(worktree) => worktree.clone(),
+            None => self.active_repo()?.spec.workdir.clone(),
+        };
+        let path = root.join(path);
+        let content = match std::fs::read(&path) {
+            Ok(bytes) => {
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                bytes.hash(&mut hasher);
+                Some(hasher.finish())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => return None,
+        };
+        Some(WorktreeSourceFingerprint { path, content })
     }
 
     fn toast_stale_patch(&self, cx: &mut gpui::Context<Self>) {

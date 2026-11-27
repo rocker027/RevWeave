@@ -1316,7 +1316,7 @@ fn file_and_diff_context_menu_shortcuts_match_expected_actions(cx: &mut gpui::Te
         ContextMenuAction::OpenPopover {
             kind: PopoverKind::DiscardLinesConfirm {
                 repo_id: rid,
-                lines: Some(3),
+                scope: crate::view::DiscardScope::Lines(Some(3)),
                 patch: Some(patch),
             },
         } if *rid == repo_id && patch == "discard patch"
@@ -1380,8 +1380,8 @@ fn file_and_diff_context_menu_shortcuts_match_expected_actions(cx: &mut gpui::Te
         ContextMenuAction::OpenPopover {
             kind: PopoverKind::DiscardLinesConfirm {
                 repo_id: rid,
+                scope: crate::view::DiscardScope::Hunks(1),
                 patch: Some(patch),
-                ..
             },
         } if *rid == repo_id && !patch.is_empty()
     );

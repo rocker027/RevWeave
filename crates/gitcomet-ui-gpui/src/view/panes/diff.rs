@@ -8,6 +8,7 @@ mod conflict_actions;
 mod core_impl;
 pub(in crate::view) mod diff_cache;
 mod diff_patch;
+pub(in crate::view) use diff_patch::WorktreeSourceFingerprint;
 pub(in crate::view) mod diff_search;
 mod diff_stage;
 pub(in crate::view) mod diff_text;

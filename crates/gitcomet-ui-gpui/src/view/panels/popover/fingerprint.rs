@@ -983,11 +983,11 @@ fn hash_popover_kind<H: Hasher>(kind: &PopoverKind, hasher: &mut H) {
         }
         PopoverKind::DiscardLinesConfirm {
             repo_id,
-            lines,
+            scope,
             patch,
         } => {
             repo_id.hash(hasher);
-            lines.hash(hasher);
+            scope.hash(hasher);
             patch.hash(hasher);
         }
         PopoverKind::FileListFolderMenu {

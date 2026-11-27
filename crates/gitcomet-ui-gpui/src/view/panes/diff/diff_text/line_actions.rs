@@ -523,7 +523,7 @@ impl DiffRenderer {
         let request =
             crate::view::PopoverRequest::from(crate::view::PopoverKind::DiscardLinesConfirm {
                 repo_id,
-                lines: None,
+                scope: crate::view::DiscardScope::Lines(None),
                 patch,
             })
             .returning_focus_to(self.diff_panel_focus_handle.clone());

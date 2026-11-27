@@ -1,6 +1,15 @@
 use super::*;
 use gitcomet_ui_terminal::TerminalViewportView;
 
+/// How much a diff discard confirmation covers.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum DiscardScope {
+    /// The selected lines, with their count when the opener knows it.
+    Lines(Option<usize>),
+    /// Whole change hunks, however few lines are selected in them.
+    Hunks(usize),
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ResolverPickTarget {
     /// Append a specific line from the 3-way resolver pane.
@@ -305,14 +314,15 @@ pub(crate) enum PopoverKind {
         path: Option<std::path::PathBuf>,
     },
     /// Discarding changes from the diff (selected lines, an outlined block,
-    /// hunks), which Git Undo cannot bring back. `lines` is the count when
-    /// the opener knows it. What gets discarded is fixed when the dialog
-    /// opens: `patch`, the reverse-applied patch built from the diff then
-    /// (it no longer applies if the file changed), or with `None` the
-    /// Difftastic request the diff keeps pending, which it drops if stale.
+    /// hunks), which Git Undo cannot bring back. `scope` says how much, so
+    /// the dialog does not understate a whole hunk as a selection. What gets
+    /// discarded is fixed when the dialog opens: `patch`, the reverse-applied
+    /// patch built from the diff then, applied only while the file is still
+    /// what it was, or with `None` the Difftastic request the diff keeps
+    /// pending, which it drops if stale.
     DiscardLinesConfirm {
         repo_id: RepoId,
-        lines: Option<usize>,
+        scope: DiscardScope,
         patch: Option<gitcomet_state::msg::ContentBytes>,
     },
     /// Add the clicked status path — or its folder, or its extension — to the

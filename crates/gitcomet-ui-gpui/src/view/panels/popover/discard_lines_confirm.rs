@@ -6,27 +6,48 @@ use crate::localization::{Language, text};
 pub(super) fn panel(
     this: &mut PopoverHost,
     repo_id: RepoId,
-    lines: Option<usize>,
+    scope: DiscardScope,
     patch: Option<gitcomet_state::msg::ContentBytes>,
     cx: &mut gpui::Context<PopoverHost>,
 ) -> gpui::Div {
     let theme = this.theme;
-    let detail = match (lines, Language::current(cx)) {
-        (Some(1), Language::English) => {
+    let language = Language::current(cx);
+    let title = match scope {
+        DiscardScope::Lines(_) => language.text("Discard lines", "捨棄選取的行"),
+        DiscardScope::Hunks(1) => language.text("Discard hunk", "捨棄整段變更"),
+        DiscardScope::Hunks(_) => language.text("Discard hunks", "捨棄多段變更"),
+    };
+    let detail = match (scope, language) {
+        (DiscardScope::Lines(Some(1)), Language::English) => {
             "This will discard the selected line from the working tree.".to_string()
         }
-        (Some(count), Language::English) => {
+        (DiscardScope::Lines(Some(count)), Language::English) => {
             format!("This will discard {count} selected lines from the working tree.")
         }
-        (None, Language::English) => {
+        (DiscardScope::Lines(None), Language::English) => {
             "This will discard the selected changes from the working tree.".to_string()
         }
-        (Some(count), Language::TraditionalChinese) => {
+        (DiscardScope::Lines(Some(count)), Language::TraditionalChinese) => {
             format!("這會從工作樹捨棄選取的 {count} 行。")
         }
-        (None, Language::TraditionalChinese) => "這會從工作樹捨棄選取的變更。".to_string(),
+        (DiscardScope::Lines(None), Language::TraditionalChinese) => {
+            "這會從工作樹捨棄選取的變更。".to_string()
+        }
+        (DiscardScope::Hunks(1), Language::English) => {
+            "This will discard the whole hunk from the working tree, not only the selected lines."
+                .to_string()
+        }
+        (DiscardScope::Hunks(count), Language::English) => format!(
+            "This will discard {count} whole hunks from the working tree, not only the selected lines."
+        ),
+        (DiscardScope::Hunks(1), Language::TraditionalChinese) => {
+            "這會從工作樹捨棄整段變更，不只選取的行。".to_string()
+        }
+        (DiscardScope::Hunks(count), Language::TraditionalChinese) => {
+            format!("這會從工作樹捨棄 {count} 段變更，不只選取的行。")
+        }
     };
-    ConfirmDialog::new(text(cx, "Discard lines", "捨棄選取的行"), DIALOG_420_WIDTH)
+    ConfirmDialog::new(title, DIALOG_420_WIDTH)
         .text(theme, detail)
         .note(
             theme,
@@ -47,19 +68,33 @@ pub(super) fn panel(
             components::Button::new("discard_lines_go", text(cx, "Discard", "捨棄"))
                 .style(components::ButtonStyle::Danger)
                 .on_click(theme, cx, move |this, _e, window, cx| {
+                    let opened_on = this.discard_confirm_source.take();
                     this.close_popover_and_restore_focus(window, cx);
                     match &patch {
-                        // Built when the dialog opened: if the file changed
-                        // since, it no longer applies and discards nothing.
-                        Some(patch) => this.context_menu_activate_action(
-                            ContextMenuAction::ApplyWorktreePatch {
-                                repo_id,
-                                patch: patch.clone(),
-                                reverse: true,
-                            },
-                            window,
-                            cx,
-                        ),
+                        Some(patch) => {
+                            // Git applies a stale patch wherever its context
+                            // matches, so a file changed since the dialog
+                            // opened could lose other lines than were shown.
+                            let current = this.diff_renderer.read(cx).worktree_source_fingerprint();
+                            if opened_on.is_none() || opened_on != current {
+                                this.push_toast(
+                                    components::ToastKind::Error,
+                                    gitcomet_core::patch_action::PatchActionError::Stale
+                                        .to_string(),
+                                    cx,
+                                );
+                                return;
+                            }
+                            this.context_menu_activate_action(
+                                ContextMenuAction::ApplyWorktreePatch {
+                                    repo_id,
+                                    patch: patch.clone(),
+                                    reverse: true,
+                                },
+                                window,
+                                cx,
+                            )
+                        }
                         None => this.diff_renderer.update(cx, |pane, cx| {
                             pane.confirm_pending_structural_discard(cx);
                         }),

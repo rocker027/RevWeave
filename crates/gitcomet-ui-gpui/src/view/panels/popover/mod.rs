@@ -271,6 +271,9 @@ pub(in super::super) struct PopoverHost {
     /// Focus held by the menu or confirmation's invoker, restored on dismissal.
     menu_invoker_focus: Option<FocusHandle>,
     focus_return: Option<FocusHandle>,
+    /// The file a diff discard confirmation would rewrite, as it was when
+    /// the confirmation opened.
+    discard_confirm_source: Option<crate::view::panes::diff::WorktreeSourceFingerprint>,
     markdown_image_approval: Option<crate::view::markdown_interaction::MarkdownInteraction>,
     active_invoker: Option<SharedString>,
     /// Whether the open popover was invoked from inside the diff panel.

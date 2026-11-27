@@ -97,7 +97,7 @@ pub(super) fn model(
             action: Box::new(ContextMenuAction::OpenPopover {
                 kind: PopoverKind::DiscardLinesConfirm {
                     repo_id,
-                    lines: None,
+                    scope: DiscardScope::Hunks(1),
                     patch,
                 },
             }),
