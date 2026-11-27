@@ -9,7 +9,9 @@ A hard reset, a rebase, or an amend can leave a commit that no branch reaches.
 Its reflog entry still points at it. To get it back without touching the working
 tree, right-click the entry and choose **Create branch here…**.
 
-The branch prompt opens with **Checkout** off, so only the branch is created. That
+The branch prompt opens with **Checkout** off, so only the branch is created; it
+appears under **Local Branches** in the sidebar, and in the graph whenever the
+history scope includes it (a scope reachable from HEAD alone does not). That
 creation can be undone with `Cmd-Z` / `Ctrl-Z`, like any branch creation. Turn
 Checkout on in the prompt to switch to the new branch as well; checking out ends
 what Git Undo can undo.
