@@ -218,11 +218,23 @@ pub struct CommitRequest {
     /// Paths staged by the same operation just before the commit, for
     /// "Stage all and commit". Empty stages nothing.
     pub stage_paths: Vec<std::path::PathBuf>,
-    /// The commit a "Create fixup commit" request folds into. Such a commit
-    /// is checked against the repository right before it runs (and again on
-    /// an auth retry): a merge, rebase, sequencer step or bisect that began
-    /// since the menu was read must not be concluded or derailed by it.
-    pub fixup_target: Option<gitcomet_core::domain::CommitId>,
+    /// Set for "Create fixup commit": checked against the repository right
+    /// before the commit runs, and again on an auth retry.
+    pub fixup_target: Option<FixupTarget>,
+}
+
+/// Where a fixup commit was asked for. A merge, rebase, sequencer step or
+/// bisect that began since, or HEAD having moved, refuses it: a plain commit
+/// would conclude the operation under a `fixup!` message, or land on a
+/// branch the target is not in.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixupTarget {
+    /// The commit the fixup folds into.
+    pub target: gitcomet_core::domain::CommitId,
+    /// The branch checked out when the fixup was asked for.
+    pub branch: String,
+    /// That branch's tip then.
+    pub head: gitcomet_core::domain::CommitId,
 }
 
 #[derive(Clone, Debug)]

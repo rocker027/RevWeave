@@ -1774,6 +1774,12 @@ impl GitRepository for GixRepo {
         Ok(state)
     }
 
+    fn merge_in_progress(&self, cancellation: &CancellationToken) -> Result<bool> {
+        let _operation = self.operation_lease()?;
+        cancellation.check_cancelled()?;
+        Ok(crate::refs::operation_state(&self.repo())? == Some(gix::state::InProgress::Merge))
+    }
+
     fn merge_commit_message(&self, cancellation: &CancellationToken) -> Result<Option<String>> {
         let _operation = self.operation_lease()?;
         cancellation.check_cancelled()?;

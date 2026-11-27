@@ -1615,6 +1615,12 @@ pub trait GitRepository: Send + Sync {
         Ok(result)
     }
 
+    /// Whether a merge waits for its commit (`MERGE_HEAD`), whatever
+    /// `MERGE_MSG` holds: a plain commit would conclude it.
+    fn merge_in_progress(&self, cancellation: &CancellationToken) -> Result<bool> {
+        Ok(self.merge_commit_message(cancellation)?.is_some())
+    }
+
     /// The `git bisect` session in progress, or `None` outside one.
     fn bisect_state(&self, cancellation: &CancellationToken) -> Result<Option<BisectState>> {
         cancellation.check_cancelled()?;

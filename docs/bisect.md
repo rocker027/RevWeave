@@ -12,9 +12,11 @@ good commit are marked, Git checks out a commit halfway between them.
 
 Marking needs no uncommitted changes to tracked files and no other Git operation
 in progress, because Git checks commits out as the session goes. Commit or stash
-your changes first. Untracked files are left alone; if one is in the way of the
-next commit to test, Git records the verdict but refuses that checkout, and the
-error says which file to move.
+your changes first. If an untracked file is in the way of the next commit to
+test, Git records the verdict but refuses that checkout, and the error says which
+file to move. Ignored files get no such protection: Git's checkout overwrites an
+ignored file that the next commit tracks, so move such files aside before a
+bisect.
 
 ## Testing
 
@@ -46,7 +48,9 @@ choose **End**.
 
 A session started in a terminal is picked up as well. If it uses its own terms
 (such as `old`/`new`), RevWeave shows it and offers **End**, but leaves the
-verdicts to the terminal, since its Good and Bad would not match those terms.
+verdicts to the terminal, since its Good and Bad would not match those terms. A
+path-limited or `--first-parent` session shows no step estimate, which would count
+commits it does not test.
 
 The graph follows the history scope: with a scope reachable from HEAD alone, the
 commits after the one under test are not drawn until the session ends.

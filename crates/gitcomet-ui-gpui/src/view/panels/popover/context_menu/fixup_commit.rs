@@ -73,11 +73,37 @@ const NOT_ON_HEAD_HISTORY: &str =
 /// row whose place in HEAD's history was not known yet (a sidebar tag, or a
 /// row whose selection had not landed); by now it is, and an unknown place
 /// counts as off HEAD's history.
+#[cfg(test)]
 pub(in crate::view) fn fixup_target_blocker(
     repo: &RepoState,
     commit_id: &CommitId,
 ) -> Option<&'static str> {
-    (!on_first_parent_history(repo, commit_id)).then_some(NOT_ON_HEAD_HISTORY)
+    fixup_request_target(repo, commit_id).err()
+}
+
+/// What the commit request carries for the run to check against Git: the
+/// target, and the branch and tip it was judged on.
+pub(in crate::view) fn fixup_request_target(
+    repo: &RepoState,
+    commit_id: &CommitId,
+) -> Result<gitcomet_state::model::FixupTarget, &'static str> {
+    if !on_first_parent_history(repo, commit_id) {
+        return Err(NOT_ON_HEAD_HISTORY);
+    }
+    let Loadable::Ready(branch) = &repo.head_branch else {
+        return Err("Loading the repository state…");
+    };
+    if branch.is_empty() || branch == "HEAD" {
+        return Err("Check out a branch to create a fixup commit");
+    }
+    let head = repo
+        .head_commit_id()
+        .ok_or("Loading the repository state…")?;
+    Ok(gitcomet_state::model::FixupTarget {
+        target: commit_id.clone(),
+        branch: branch.clone(),
+        head,
+    })
 }
 
 /// The menu entry, disabled while [`fixup_blocker`] names a reason.

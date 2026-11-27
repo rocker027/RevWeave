@@ -1086,8 +1086,8 @@ pub(super) fn schedule_commit(
         if amend { "Amend commit" } else { "Commit" },
         context,
         move |repo| {
-            if fixup_target.is_some() {
-                fixup_commit_preflight(repo.as_ref())?;
+            if let Some(expected) = &fixup_target {
+                fixup_commit_preflight(repo.as_ref(), expected)?;
             }
             run_with_git_auth(auth, || {
                 // Staged in the same run, so the commit never starts before
@@ -1115,17 +1115,29 @@ pub(super) fn schedule_commit(
 
 /// Refuses a fixup commit when the repository is no longer where the menu
 /// saw it: a plain commit would conclude a pending merge or sequencer step
-/// under a `fixup!` message, or move a bisect off its commit under test.
-fn fixup_commit_preflight(repo: &dyn GitRepository) -> Result<(), Error> {
+/// under a `fixup!` message, move a bisect off its commit under test, or
+/// land on a branch or tip other than the one the target was judged on.
+fn fixup_commit_preflight(
+    repo: &dyn GitRepository,
+    expected: &crate::model::FixupTarget,
+) -> Result<(), Error> {
+    let refuse = |why: &str| {
+        Err(Error::new(gitcomet_core::error::ErrorKind::Backend(
+            format!("Create fixup commit: {why}"),
+        )))
+    };
     let cancellation = gitcomet_core::services::CancellationToken::new();
     let busy = repo.sequencer_state(&cancellation)?
         != gitcomet_core::services::SequencerState::None
-        || repo.merge_commit_message(&cancellation)?.is_some()
+        || repo.merge_in_progress(&cancellation)?
         || repo.bisect_state(&cancellation)?.is_some();
     if busy {
-        return Err(Error::new(gitcomet_core::error::ErrorKind::Backend(
-            "Create fixup commit: a Git operation is in progress; finish it first".to_string(),
-        )));
+        return refuse("a Git operation is in progress; finish it first");
+    }
+    if repo.current_branch(&cancellation)? != expected.branch
+        || repo.head_commit_id()?.as_ref() != Some(&expected.head)
+    {
+        return refuse("HEAD moved since the menu was opened; open it again");
     }
     Ok(())
 }
@@ -1388,12 +1400,14 @@ mod delete_branches_tests {
 #[cfg(test)]
 mod fixup_preflight_tests {
     use super::fixup_commit_preflight;
+    use crate::model::FixupTarget;
+    use gitcomet_core::domain::CommitId;
     use gitcomet_core::services::GitBackend;
     use std::path::Path;
     use std::process::Command;
 
-    fn git(dir: &Path, args: &[&str]) {
-        let status = Command::new("git")
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
             .arg("-C")
             .arg(dir)
             .args([
@@ -1407,7 +1421,8 @@ mod fixup_preflight_tests {
             .args(args)
             .output()
             .expect("run git");
-        assert!(status.status.success(), "git {args:?}: {status:?}");
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
     }
 
     fn repo_with_a_side_branch() -> tempfile::TempDir {
@@ -1425,27 +1440,62 @@ mod fixup_preflight_tests {
         dir
     }
 
+    /// What the menu saw: `main` at its current tip.
+    fn on_main(dir: &Path) -> FixupTarget {
+        let head = CommitId(git(dir, &["rev-parse", "HEAD"]).into());
+        FixupTarget {
+            target: head.clone(),
+            branch: "main".to_string(),
+            head,
+        }
+    }
+
+    fn preflight(dir: &Path, expected: &FixupTarget) -> bool {
+        let repo = gitcomet_git_gix::GixBackend.open(dir).unwrap();
+        fixup_commit_preflight(repo.as_ref(), expected).is_ok()
+    }
+
     #[test]
     fn a_clean_repository_takes_a_fixup() {
         let dir = repo_with_a_side_branch();
-        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
-        assert!(fixup_commit_preflight(repo.as_ref()).is_ok());
+        let expected = on_main(dir.path());
+        assert!(preflight(dir.path(), &expected));
     }
 
     /// A merge that waits for its commit would be concluded by the fixup.
     #[test]
     fn a_pending_merge_refuses_a_fixup() {
         let dir = repo_with_a_side_branch();
+        let expected = on_main(dir.path());
         git(dir.path(), &["merge", "--no-ff", "--no-commit", "side"]);
-        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
-        assert!(fixup_commit_preflight(repo.as_ref()).is_err());
+        assert!(!preflight(dir.path(), &expected));
+    }
+
+    /// Without MERGE_MSG the merge still waits on MERGE_HEAD.
+    #[test]
+    fn a_pending_merge_without_its_message_refuses_a_fixup() {
+        let dir = repo_with_a_side_branch();
+        let expected = on_main(dir.path());
+        git(dir.path(), &["merge", "--no-ff", "--no-commit", "side"]);
+        std::fs::remove_file(dir.path().join(".git/MERGE_MSG")).unwrap();
+        assert!(!preflight(dir.path(), &expected));
     }
 
     #[test]
     fn a_bisect_session_refuses_a_fixup() {
         let dir = repo_with_a_side_branch();
+        let expected = on_main(dir.path());
         git(dir.path(), &["bisect", "start"]);
-        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
-        assert!(fixup_commit_preflight(repo.as_ref()).is_err());
+        assert!(!preflight(dir.path(), &expected));
+    }
+
+    /// Switched away (say, while an auth prompt waited): the fixup would land
+    /// on a branch its target is not in.
+    #[test]
+    fn a_moved_head_refuses_a_fixup() {
+        let dir = repo_with_a_side_branch();
+        let expected = on_main(dir.path());
+        git(dir.path(), &["switch", "-q", "side"]);
+        assert!(!preflight(dir.path(), &expected));
     }
 }

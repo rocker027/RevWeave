@@ -909,25 +909,44 @@ impl PopoverHost {
                 });
             }
             ContextMenuAction::Bisect { repo_id, step } => {
-                self.store.dispatch(Msg::Bisect { repo_id, step });
+                // The menu may have been drawn before the session moved on
+                // (say, to its first bad commit); judge the mark again now.
+                let blocker = match step {
+                    gitcomet_state::msg::BisectStep::Reset => None,
+                    _ => self
+                        .state
+                        .repos
+                        .iter()
+                        .find(|repo| repo.id == repo_id)
+                        .map_or(Some("The repository is unavailable."), |repo| {
+                            super::bisect::bisect_mark_blocker(repo)
+                        }),
+                };
+                match blocker {
+                    Some(blocker) => {
+                        self.push_toast(components::ToastKind::Warning, blocker.to_owned(), cx);
+                    }
+                    None => self.store.dispatch(Msg::Bisect { repo_id, step }),
+                }
             }
             ContextMenuAction::CreateFixupCommit {
                 repo_id,
                 commit_id,
                 message,
             } => {
-                let blocker = self
+                let target = self
                     .state
                     .repos
                     .iter()
                     .find(|repo| repo.id == repo_id)
-                    .map_or(Some("The repository is unavailable."), |repo| {
-                        super::fixup_commit::fixup_target_blocker(repo, &commit_id)
+                    .map_or(Err("The repository is unavailable."), |repo| {
+                        super::fixup_commit::fixup_request_target(repo, &commit_id)
                     });
-                if let Some(blocker) = blocker {
-                    self.push_toast(components::ToastKind::Warning, blocker.to_owned(), cx);
-                } else {
-                    self.store.dispatch(Msg::Commit {
+                match target {
+                    Err(blocker) => {
+                        self.push_toast(components::ToastKind::Warning, blocker.to_owned(), cx);
+                    }
+                    Ok(target) => self.store.dispatch(Msg::Commit {
                         repo_id,
                         request: gitcomet_state::model::CommitRequest {
                             message,
@@ -937,9 +956,9 @@ impl PopoverHost {
                                 self.commit_skip_hooks_enabled,
                             ),
                             stage_paths: Vec::new(),
-                            fixup_target: Some(commit_id),
+                            fixup_target: Some(target),
                         },
-                    });
+                    }),
                 }
             }
             ContextMenuAction::UseCommitMessage { message } => {

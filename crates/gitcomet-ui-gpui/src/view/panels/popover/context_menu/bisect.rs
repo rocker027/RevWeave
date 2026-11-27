@@ -110,7 +110,10 @@ pub(super) fn entries(
         items.push(step_entry(
             language.text("End bisect", "結束 Bisect"),
             "icons/repo_tab_close.svg",
-            repo.is_bare() || repo.local_actions_in_flight > 0 || worktree_finish_busy,
+            repo.is_bare()
+                || repo.local_actions_in_flight > 0
+                || repo.worktree_pull_in_flight > 0
+                || worktree_finish_busy,
             repo.id,
             BisectStep::Reset,
         ));

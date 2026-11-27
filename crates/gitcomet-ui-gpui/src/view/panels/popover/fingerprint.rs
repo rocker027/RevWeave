@@ -602,6 +602,9 @@ fn hash_repo_for_popover<H: Hasher>(
         }
 
         PopoverKind::CommitMenu { .. } => {
+            // Bisect entries follow the session, which can end while the
+            // menu stays open.
+            repo.bisect_rev.hash(hasher);
             repo.head_branch_rev.hash(hasher);
             repo.branches_rev.hash(hasher);
             repo.remote_branches_rev.hash(hasher);

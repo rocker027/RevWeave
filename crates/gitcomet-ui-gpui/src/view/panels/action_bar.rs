@@ -326,6 +326,15 @@ impl ActionBarView {
 /// The bisect controls' status: what the session needs next, how far it has
 /// left, or the first bad commit once found.
 fn bisect_status(bisect: &gitcomet_core::services::BisectState, language: Language) -> String {
+    // Its own terms make "bad" and "good" the wrong words for it.
+    if bisect.custom_terms {
+        return language
+            .text(
+                "Continue this bisect in a terminal",
+                "請在終端機繼續這次 bisect",
+            )
+            .to_owned();
+    }
     if let Some(first_bad) = &bisect.first_bad {
         let short = first_bad.as_ref().get(..7).unwrap_or(first_bad.as_ref());
         return match language {
@@ -987,7 +996,9 @@ impl BarItemOwner for ActionBarView {
                     repo.id,
                     bisect.clone(),
                     crate::view::panels::popover::context_menu::bisect::bisect_mark_blocker(repo),
-                    repo.local_actions_in_flight > 0 || repo.is_bare(),
+                    repo.local_actions_in_flight > 0
+                        || repo.worktree_pull_in_flight > 0
+                        || repo.is_bare(),
                 )),
                 _ => None,
             });
@@ -2213,6 +2224,14 @@ mod tests {
         let id = |sha: &str| CommitId(sha.into());
         let status = |state: BisectState| bisect_status(&state, Language::English);
         assert_eq!(status(BisectState::default()), "Mark a bad commit");
+        assert_eq!(
+            status(BisectState {
+                custom_terms: true,
+                first_bad: Some(id("b")),
+                ..Default::default()
+            }),
+            "Continue this bisect in a terminal"
+        );
         assert_eq!(
             status(BisectState {
                 bad: Some(id("b")),

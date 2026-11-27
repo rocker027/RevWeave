@@ -29,7 +29,13 @@ impl GixRepo {
         if !self.bisect_in_progress() {
             return Ok(None);
         }
-        let read = |name| std::fs::read_to_string(self.bisect_file(name)).unwrap_or_default();
+        // Lossy: a path git logged in non-UTF-8 bytes must not hide the
+        // outcome lines, which are ASCII.
+        let read = |name| {
+            std::fs::read(self.bisect_file(name))
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or_default()
+        };
         let custom_terms = !matches!(
             read("BISECT_TERMS")
                 .split_whitespace()
@@ -37,7 +43,10 @@ impl GixRepo {
                 .as_slice(),
             [] | ["bad", "good"]
         );
-        let path_limited = !read("BISECT_NAMES").trim().is_empty();
+        // Progress counts every commit in the range; a path-limited or
+        // first-parent search tests fewer, so its count would mislead.
+        let narrowed = !read("BISECT_NAMES").trim().is_empty()
+            || self.bisect_file("BISECT_FIRST_PARENT").is_file();
 
         let mut cmd = self.git_workdir_cmd();
         cmd.args([
@@ -54,7 +63,7 @@ impl GixRepo {
         // ended. A path-limited search counts commits git ignores, so skip it.
         let searching = state.first_bad.is_none() && !state.only_skipped_left;
         if searching
-            && !path_limited
+            && !narrowed
             && !custom_terms
             && let Some(bad) = state.bad.clone()
             && !state.good.is_empty()
@@ -149,16 +158,17 @@ fn parse_bisect_refs(refs: &str) -> BisectState {
     state
 }
 
-/// The outcome git logged after the session's last command: `# first '<term>'
-/// commit: [<sha>]` once found, `# only skipped commits left to test` when
-/// the skips cover every candidate. A later command clears both.
+/// The outcome git logged after the session's last command: `# first bad
+/// commit: [<sha>]` (or `# first '<term>' commit: [<sha>]` in newer Git) once
+/// found, `# only skipped commits left to test` when the skips cover every
+/// candidate. A later command clears both.
 fn apply_bisect_log(state: &mut BisectState, log: &str) {
     for line in log.lines() {
         if line.starts_with("git bisect ") {
             state.first_bad = None;
             state.only_skipped_left = false;
-        } else if let Some(rest) = line.strip_prefix("# first '")
-            && let Some((_, after)) = rest.split_once("' commit: [")
+        } else if let Some(rest) = line.strip_prefix("# first ")
+            && let Some((_, after)) = rest.split_once(" commit: [")
             && let Some((sha, _)) = after.split_once(']')
         {
             state.first_bad = Some(CommitId(sha.trim().into()));
@@ -215,6 +225,11 @@ mod tests {
              # first 'bad' commit: [a925ec4] c4\n",
         );
         assert_eq!(state.first_bad, Some(CommitId("a925ec4".into())));
+
+        // Older Git (2.53 among them) writes the outcome without the term quoted.
+        let mut state = BisectState::default();
+        apply_bisect_log(&mut state, "git bisect bad b\n# first bad commit: [b] c4\n");
+        assert_eq!(state.first_bad, Some(CommitId("b".into())));
 
         let mut state = BisectState::default();
         apply_bisect_log(
