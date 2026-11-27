@@ -251,7 +251,7 @@ impl ActionBarView {
                     button.gitcomet_tooltip(theme, text.into())
                 })
         };
-        let status_element = match bisect.first_bad.clone() {
+        let status_element = match bisect.first_bad.clone().filter(|_| !bisect.custom_terms) {
             Some(first_bad) => components::Button::new("bisect_first_bad", status)
                 .style(components::ButtonStyle::Subtle)
                 .on_click(theme, cx, move |this, _e: &ClickEvent, _w, _cx| {

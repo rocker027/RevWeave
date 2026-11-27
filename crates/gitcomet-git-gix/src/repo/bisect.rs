@@ -102,6 +102,13 @@ impl GixRepo {
             )));
         }
         if !self.bisect_in_progress() {
+            // Only good and bad start a search; a skip meant for a session
+            // that ended meanwhile must not open a new one.
+            if verdict == BisectVerdict::Skip {
+                return Err(Error::new(ErrorKind::Backend(
+                    "git bisect: no session to skip a commit in".to_string(),
+                )));
+            }
             let mut cmd = self.git_workdir_cmd();
             cmd.args(["bisect", "start"]);
             run_git_simple(cmd, "git bisect start")?;

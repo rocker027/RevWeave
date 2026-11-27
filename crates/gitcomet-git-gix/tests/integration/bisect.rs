@@ -195,3 +195,21 @@ fn diverged_good_and_bad_test_the_merge_base_before_ending() {
     );
     repo.bisect_reset_with_output().expect("reset");
 }
+
+/// A skip meant for a session that ended meanwhile must not open a new one.
+#[test]
+fn a_skip_without_a_session_does_not_start_one() {
+    test_git_env::ensure_initialized();
+    let dir = tempfile::tempdir().unwrap();
+    let commits = repo_with_a_regression(dir.path());
+    let repo = open(dir.path());
+    assert!(
+        repo.bisect_mark_with_output(
+            BisectVerdict::Skip,
+            Some(&CommitId(commits[2].clone().into()))
+        )
+        .is_err()
+    );
+    assert_eq!(state(&repo), None);
+    assert!(!dir.path().join(".git/BISECT_START").exists());
+}

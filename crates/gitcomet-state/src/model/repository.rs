@@ -175,6 +175,9 @@ pub struct RepoState {
     pub bisect: Loadable<Option<BisectState>>,
     /// Bumped whenever `bisect` changes, for views that mark its verdicts.
     pub bisect_rev: u64,
+    /// Bisect steps sent and not finished yet. A step checks out the next
+    /// commit to test before `bisect` shows the session.
+    pub bisect_actions_in_flight: u32,
     pub merge_commit_message: Loadable<Option<String>>,
     /// Commit whose full message the history hover card is showing, and the
     /// message once it arrives. A single slot: only one card is ever open, and
@@ -459,6 +462,7 @@ impl RepoState {
             sequencer_state: Loadable::NotLoaded,
             bisect: Loadable::NotLoaded,
             bisect_rev: 0,
+            bisect_actions_in_flight: 0,
             merge_commit_message: Loadable::NotLoaded,
             tag_push_previews: [None, None],
             hover_commit_message: None,
@@ -1220,6 +1224,12 @@ impl RepoState {
     /// commit under test, and rewriting history would derail the session.
     pub fn bisect_in_progress(&self) -> bool {
         matches!(&self.bisect, Loadable::Ready(Some(_)))
+    }
+
+    /// Whether a pull would move the checkout under a bisect: a session runs,
+    /// or a step that may start one has not finished.
+    pub fn bisect_blocks_pull(&self) -> bool {
+        self.bisect_in_progress() || self.bisect_actions_in_flight > 0
     }
 
     pub(crate) fn set_upstream_divergence(&mut self, v: Loadable<Option<UpstreamDivergence>>) {

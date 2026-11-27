@@ -240,7 +240,11 @@ pub(in crate::view) fn bisect_row_mark(
         return None;
     };
     let status = &theme.colors.status;
-    let (label, color) = if bisect.first_bad.as_ref() == Some(commit_id) {
+    // Its own terms (say, old/new for when a feature appeared) make red
+    // "bad" the wrong word for the result.
+    let (label, color) = if bisect.custom_terms && bisect.first_bad.as_ref() == Some(commit_id) {
+        ("result", theme.colors.foreground.secondary)
+    } else if bisect.first_bad.as_ref() == Some(commit_id) {
         ("first bad", status.danger.foreground)
     } else if bisect.bad.as_ref() == Some(commit_id) {
         ("bad", status.danger.foreground)

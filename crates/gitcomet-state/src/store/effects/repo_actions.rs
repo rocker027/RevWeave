@@ -1089,6 +1089,12 @@ pub(super) fn schedule_commit(
             if let Some(expected) = &fixup_target {
                 fixup_commit_preflight(repo.as_ref(), expected)?;
             }
+            // An amend rewrites HEAD: under a bisect (say, one started from a
+            // terminal while an auth prompt waited) that is the commit under
+            // test.
+            if amend {
+                amend_preflight(repo.as_ref())?;
+            }
             run_with_git_auth(auth, || {
                 // Staged in the same run, so the commit never starts before
                 // the stage is done. Other actions on the repository can
@@ -1111,6 +1117,17 @@ pub(super) fn schedule_commit(
             result,
         },
     );
+}
+
+/// Refuses an amend under a bisect: HEAD is then the commit under test.
+fn amend_preflight(repo: &dyn GitRepository) -> Result<(), Error> {
+    let cancellation = gitcomet_core::services::CancellationToken::new();
+    if repo.bisect_state(&cancellation)?.is_some() {
+        return Err(Error::new(gitcomet_core::error::ErrorKind::Backend(
+            "Amend is unavailable during a bisect; end the bisect first".to_string(),
+        )));
+    }
+    Ok(())
 }
 
 /// Refuses a fixup commit when the repository is no longer where the menu
@@ -1491,6 +1508,15 @@ mod fixup_preflight_tests {
 
     /// Switched away (say, while an auth prompt waited): the fixup would land
     /// on a branch its target is not in.
+    #[test]
+    fn a_bisect_session_refuses_an_amend() {
+        let dir = repo_with_a_side_branch();
+        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
+        assert!(super::amend_preflight(repo.as_ref()).is_ok());
+        git(dir.path(), &["bisect", "start"]);
+        assert!(super::amend_preflight(repo.as_ref()).is_err());
+    }
+
     #[test]
     fn a_moved_head_refuses_a_fixup() {
         let dir = repo_with_a_side_branch();

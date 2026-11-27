@@ -263,6 +263,19 @@ fn bisect_step_emits_effect_and_counts_as_a_local_action() {
         .expect("repo should exist");
     assert_eq!(repo.local_actions_in_flight, 1);
 
+    // A pull would move the checkout under the step: refused.
+    let effects = reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::PullBranch {
+            repo_id: RepoId(1),
+            remote: "origin".to_string(),
+            branch: "main".to_string(),
+        },
+    );
+    assert!(effects.is_empty(), "{effects:?}");
+
     // A second step before the first finished is dropped.
     let effects = reduce(
         &mut repos,

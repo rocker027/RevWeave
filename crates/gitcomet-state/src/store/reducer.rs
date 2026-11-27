@@ -1760,6 +1760,9 @@ fn reduce_inner(
                 return Vec::new();
             }
             begin_head_changing_local_action(state, repo_id);
+            if let Some(repo) = state.repos.iter_mut().find(|r| r.id == repo_id) {
+                repo.bisect_actions_in_flight = repo.bisect_actions_in_flight.saturating_add(1);
+            }
             vec![Effect::Bisect { repo_id, step }]
         }
         Msg::CherryPickCommit {

@@ -1097,6 +1097,10 @@ fn finish_repo_action(
         );
     if let Some(repo_state) = state.repos.iter_mut().find(|r| r.id == repo_id) {
         repo_state.local_actions_in_flight = repo_state.local_actions_in_flight.saturating_sub(1);
+        if action == RepoActionKind::Bisect {
+            repo_state.bisect_actions_in_flight =
+                repo_state.bisect_actions_in_flight.saturating_sub(1);
+        }
         repo_state.bump_ops_rev();
         if action.writes_worktree() {
             repo_state.bump_local_worktree_write_rev();
