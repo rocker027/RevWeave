@@ -337,7 +337,7 @@ as the row's action menu, which shows the same letters.
 | Reword the selected commit | `R` | Opens the message dialog. |
 | Squash the selected commit into the one below | `S` | Needs an earlier commit to fold into. |
 | Drop the selected commit | `D` | The last remaining commit cannot be dropped. |
-| Move the selected commit up / down | `Option/Alt-Up`, `Option/Alt-Down` | The same as the row's ▲/▼ buttons; the first and last rows stay. |
+| Move the selected commit up / down | `Option/Alt-Up`, `Option/Alt-Down` | The same as the row's ▲/▼ buttons; the first row cannot move up and the last cannot move down. |
 
 ## Branch drag and drop
 

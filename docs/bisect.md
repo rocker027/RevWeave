@@ -10,8 +10,11 @@ Right-click a commit in the history and choose **Bisect: mark as bad** or
 **Bisect: mark as good**. The first mark starts the session. Once one bad and one
 good commit are marked, Git checks out a commit halfway between them.
 
-Marking needs a clean working tree and no other Git operation in progress, because
-Git checks commits out as the session goes. Commit or stash your changes first.
+Marking needs no uncommitted changes to tracked files and no other Git operation
+in progress, because Git checks commits out as the session goes. Commit or stash
+your changes first. Untracked files are left alone; if one is in the way of the
+next commit to test, Git records the verdict but refuses that checkout, and the
+error says which file to move.
 
 ## Testing
 
@@ -40,6 +43,10 @@ If every commit left besides the bad one was skipped, Git cannot narrow it down:
 the toolbar shows **Only skipped commits left**, and the first bad commit is the
 bad one or one of the skipped ones. Mark a skipped commit good or bad to go on, or
 choose **End**.
+
+A session started in a terminal is picked up as well. If it uses its own terms
+(such as `old`/`new`), RevWeave shows it and offers **End**, but leaves the
+verdicts to the terminal, since its Good and Bad would not match those terms.
 
 The graph follows the history scope: with a scope reachable from HEAD alone, the
 commits after the one under test are not drawn until the session ends.

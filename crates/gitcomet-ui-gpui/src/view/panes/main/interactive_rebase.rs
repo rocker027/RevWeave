@@ -363,7 +363,8 @@ fn display_pos_for_data_ix(st: &IRebaseViewState, ix: usize) -> usize {
 
 /// Moves the entry at data index `ix` one row up the list as shown
 /// (`toward_top`) or down it, as the row's ▲/▼ buttons and Option/Alt-Up and
-/// Option/Alt-Down do. Returns whether it moved: the first and last rows stay.
+/// Option/Alt-Down do. Returns whether it moved: the first row cannot move up
+/// and the last cannot move down.
 ///
 /// Refused mid-drag: the drag holds the dragged row's data index, which a
 /// move would hand to its neighbour.
