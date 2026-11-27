@@ -485,39 +485,60 @@ impl DiffRenderer {
         if !self.diff_line_action_available(DiffLineAction::Discard) || self.diff_actions_busy() {
             return false;
         }
-        let has_selection = if self.structural_diff_active() {
-            self.structural_selected_lines()
-                .is_some_and(|selection| !selection.old.is_empty() || !selection.new.is_empty())
+        // What the confirmation discards is fixed now, from the selection as
+        // the user sees it.
+        let patch = if self.structural_diff_active() {
+            let Some(selection) = self.structural_selected_lines() else {
+                return false;
+            };
+            if !self.stage_pending_structural_discard(selection) {
+                return false;
+            }
+            None
         } else {
-            self.diff_line_action_rows().is_some()
+            // No patch: only context lines are selected, nothing to discard.
+            let Some(patch) = self
+                .diff_line_action_rows()
+                .and_then(|rows| self.diff_lines_patch_for_rows(DiffLineAction::Discard, rows))
+            else {
+                return false;
+            };
+            Some(patch)
         };
-        let Some(repo_id) = self.active_repo_id().filter(|_| has_selection) else {
-            return false;
+        self.open_discard_confirm(patch, window.window_handle(), cx);
+        true
+    }
+
+    /// Opens the discard confirmation over the diff. Cancelling returns focus
+    /// to the diff, where U can ask again.
+    pub(in crate::view) fn open_discard_confirm(
+        &mut self,
+        patch: Option<gitcomet_state::msg::ContentBytes>,
+        window: gpui::AnyWindowHandle,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let Some(repo_id) = self.active_repo_id() else {
+            return;
         };
-        let center = window.viewport_size();
-        // Cancelling returns focus to the diff, where U can be pressed again
-        // on the same selection.
         let request =
             crate::view::PopoverRequest::from(crate::view::PopoverKind::DiscardLinesConfirm {
                 repo_id,
                 lines: None,
+                patch,
             })
             .returning_focus_to(self.diff_panel_focus_handle.clone());
-        self.open_popover_at(
-            request,
-            gpui::point(center.width / 2.0, center.height / 3.0),
-            window,
+        self.commands.defer(
+            crate::view::panes::diff::services::DiffCommand::OpenPopover {
+                request: Box::new(request),
+                anchor: crate::view::panes::diff::services::DiffPopoverAnchor::Point(gpui::point(
+                    gpui::px(480.0),
+                    gpui::px(240.0),
+                )),
+                pane: self.hosted_decor.as_ref().map(|_| cx.entity()),
+                window,
+            },
             cx,
         );
-        true
-    }
-
-    /// The confirmation's Discard: discards the selection as it is now.
-    pub(in crate::view) fn discard_selected_lines_confirmed(
-        &mut self,
-        cx: &mut gpui::Context<Self>,
-    ) {
-        self.apply_diff_line_action(DiffLineAction::Discard, cx);
     }
 
     /// Stages, unstages or discards the selected lines, as the diff editor

@@ -94,10 +94,12 @@ pub(super) fn model(
             icon: Some("icons/refresh.svg".into()),
             shortcut: Some(secondary_shortcut("U").into()),
             disabled: !is_unstaged || patch.is_none(),
-            action: Box::new(ContextMenuAction::ApplyWorktreePatch {
-                repo_id,
-                patch: patch.unwrap_or_default(),
-                reverse: true,
+            action: Box::new(ContextMenuAction::OpenPopover {
+                kind: PopoverKind::DiscardLinesConfirm {
+                    repo_id,
+                    lines: None,
+                    patch,
+                },
             }),
         });
     }

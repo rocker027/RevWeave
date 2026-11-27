@@ -1308,8 +1308,14 @@ impl PopoverHost {
                             ..
                         }
                     );
+                let discards_from_diff = matches!(&kind, PopoverKind::DiscardLinesConfirm { .. });
                 let mut request = PopoverRequest::from(kind);
                 if keep_graph_focus && let Some(focus) = self.focus_return.clone() {
+                    request = request.returning_focus_to(focus);
+                } else if discards_from_diff {
+                    // Cancelled, focus goes back to the diff the menu came
+                    // from, where U can ask again.
+                    let focus = self.diff_renderer.read(cx).diff_panel_focus_handle.clone();
                     request = request.returning_focus_to(focus);
                 }
                 self.open_popover_at(request, anchor, window, cx);

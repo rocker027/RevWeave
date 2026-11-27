@@ -1925,7 +1925,7 @@ fn u_after_a_difftastic_right_click_discards_the_clicked_line(cx: &mut gpui::Tes
         cx.simulate_keystrokes("u");
         cx.run_until_parked();
         // U asks before discarding; accept as the user would.
-        cx.update(|window, app| {
+        cx.update(|_, app| {
             assert!(
                 matches!(
                     view.read(app)
@@ -1936,12 +1936,14 @@ fn u_after_a_difftastic_right_click_discards_the_clicked_line(cx: &mut gpui::Tes
                 ),
                 "{case}: U asks before discarding"
             );
-            renderer.update(app, |pane, cx| pane.discard_selected_lines_confirmed(cx));
-            let host = view.read(app).popover_host.clone();
-            host.update(app, |host, cx| {
-                host.close_popover_and_restore_focus(window, cx)
-            });
         });
+        let go = cx
+            .debug_bounds("discard_lines_go")
+            .unwrap_or_else(|| panic!("{case}: the confirmation's Discard is drawn"))
+            .center();
+        cx.simulate_mouse_move(go, None, gpui::Modifiers::default());
+        cx.simulate_mouse_down(go, gpui::MouseButton::Left, gpui::Modifiers::default());
+        cx.simulate_mouse_up(go, gpui::MouseButton::Left, gpui::Modifiers::default());
         settle(cx, &view, &store, "line 2 reverted", |_| {
             // Git unlinks before rewriting, so a missing file is "not yet".
             std::fs::read_to_string(dir.path().join("a.rs"))

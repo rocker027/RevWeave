@@ -493,6 +493,13 @@ pub(crate) struct DiffRenderer {
     pub(in crate::view) store: crate::view::pane_store::PaneStore,
     pub(in crate::view::panes::diff) input: DiffPaneInput,
     pub(in crate::view::panes::diff) pending_target: Option<DiffTarget>,
+    /// A Difftastic discard waiting on its confirmation: the selection and
+    /// where it came from, so a stale one is dropped instead of applied to
+    /// whatever the diff shows by then.
+    pub(in crate::view::panes::diff) pending_structural_discard: Option<(
+        gitcomet_core::patch_action::SourceLineSelection,
+        crate::view::panes::diff::diff_patch::PatchOrigin,
+    )>,
     pub(in crate::view) view_mode: GitCometViewMode,
     pub(in crate::view) focused_mergetool_labels: Option<FocusedMergetoolLabels>,
     pub(in crate::view) focused_mergetool_exit_code: Option<Arc<AtomicI32>>,

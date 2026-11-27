@@ -981,9 +981,14 @@ fn hash_popover_kind<H: Hasher>(kind: &PopoverKind, hasher: &mut H) {
             hash_diff_area(*area, hasher);
             path.hash(hasher);
         }
-        PopoverKind::DiscardLinesConfirm { repo_id, lines } => {
+        PopoverKind::DiscardLinesConfirm {
+            repo_id,
+            lines,
+            patch,
+        } => {
             repo_id.hash(hasher);
             lines.hash(hasher);
+            patch.hash(hasher);
         }
         PopoverKind::FileListFolderMenu {
             repo_id,

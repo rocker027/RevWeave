@@ -304,13 +304,16 @@ pub(crate) enum PopoverKind {
         area: DiffArea,
         path: Option<std::path::PathBuf>,
     },
-    /// Discarding the diff's selected lines (or its outlined change block),
-    /// which Git Undo cannot bring back. `lines` is the count when the opener
-    /// knows it. Confirming asks the diff to discard its selection as it is
-    /// then.
+    /// Discarding changes from the diff (selected lines, an outlined block,
+    /// hunks), which Git Undo cannot bring back. `lines` is the count when
+    /// the opener knows it. What gets discarded is fixed when the dialog
+    /// opens: `patch`, the reverse-applied patch built from the diff then
+    /// (it no longer applies if the file changed), or with `None` the
+    /// Difftastic request the diff keeps pending, which it drops if stale.
     DiscardLinesConfirm {
         repo_id: RepoId,
         lines: Option<usize>,
+        patch: Option<gitcomet_state::msg::ContentBytes>,
     },
     /// Add the clicked status path — or its folder, or its extension — to the
     /// repo-root `.gitignore`.

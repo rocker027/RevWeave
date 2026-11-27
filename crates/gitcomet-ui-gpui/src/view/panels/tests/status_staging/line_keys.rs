@@ -475,16 +475,13 @@ fn press_in(
         });
         if confirm {
             asked = true;
-            cx.update(|window, app| {
-                view.read(app)
-                    .diff_renderer
-                    .clone()
-                    .update(app, |pane, cx| pane.discard_selected_lines_confirmed(cx));
-                let host = view.read(app).popover_host.clone();
-                host.update(app, |host, cx| {
-                    host.close_popover_and_restore_focus(window, cx)
-                });
-            });
+            let go = cx
+                .debug_bounds("discard_lines_go")
+                .unwrap_or_else(|| panic!("{case}: the confirmation's Discard is drawn"))
+                .center();
+            cx.simulate_mouse_move(go, None, gpui::Modifiers::default());
+            cx.simulate_mouse_down(go, gpui::MouseButton::Left, gpui::Modifiers::default());
+            cx.simulate_mouse_up(go, gpui::MouseButton::Left, gpui::Modifiers::default());
             draw_and_drain_test_window(cx);
         }
         crate::view::test_support::drain_store_worker(&view, cx);

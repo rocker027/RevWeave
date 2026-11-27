@@ -74,6 +74,7 @@ pub(super) fn model(
                     kind: PopoverKind::DiscardLinesConfirm {
                         repo_id,
                         lines: Some(lines_count),
+                        patch: discard_lines_patch.clone(),
                     },
                 }),
             });
@@ -111,10 +112,12 @@ pub(super) fn model(
                 icon: Some("icons/refresh.svg".into()),
                 shortcut: None,
                 disabled: hunk_patch.is_none(),
-                action: Box::new(ContextMenuAction::ApplyWorktreePatch {
-                    repo_id,
-                    patch: hunk_patch.clone().unwrap_or_default(),
-                    reverse: true,
+                action: Box::new(ContextMenuAction::OpenPopover {
+                    kind: PopoverKind::DiscardLinesConfirm {
+                        repo_id,
+                        lines: None,
+                        patch: hunk_patch.clone(),
+                    },
                 }),
             });
         }

@@ -272,6 +272,7 @@ impl DiffRenderer {
             hosted_decor: None,
             input,
             pending_target: None,
+            pending_structural_discard: None,
             view_mode,
             focused_mergetool_labels,
             focused_mergetool_exit_code,

@@ -17,7 +17,7 @@ use std::sync::Arc;
 mod tests;
 
 #[derive(Clone)]
-struct PatchOrigin {
+pub(in crate::view::panes::diff) struct PatchOrigin {
     repo_id: RepoId,
     lifetime: u64,
     view: Option<DiffViewId>,
@@ -214,15 +214,26 @@ impl DiffRenderer {
                     let item = HostedMenuItem::action(HostedAction::new(
                         format!("{} {label}", operation.label()),
                         move |cx| {
-                            if let Some(origin) = &origin {
-                                let _ = weak.update(cx, |pane, cx| {
+                            let Some(origin) = &origin else {
+                                return;
+                            };
+                            let window = cx.active_window();
+                            let _ = weak.update(cx, |pane, cx| {
+                                if operation == PatchOperation::Discard {
+                                    // Ask first: Git Undo cannot restore it.
+                                    pane.pending_structural_discard =
+                                        Some((selection.clone(), origin.clone()));
+                                    if let Some(window) = window {
+                                        pane.open_discard_confirm(None, window, cx);
+                                    }
+                                } else {
                                     pane.prepare_structural_patch_from_origin(
                                         selection.clone(),
                                         origin.clone(),
                                         cx,
                                     )
-                                });
-                            }
+                                }
+                            });
                         },
                     ));
                     items.push(item.disabled(!allowed));
@@ -299,6 +310,33 @@ impl DiffRenderer {
             target,
             operation,
         })
+    }
+
+    /// Keeps `selection` as the Difftastic discard awaiting confirmation.
+    /// Returns whether there is something to discard from here.
+    pub(in crate::view) fn stage_pending_structural_discard(
+        &mut self,
+        selection: SourceLineSelection,
+    ) -> bool {
+        if selection.old.is_empty() && selection.new.is_empty() {
+            return false;
+        }
+        let Some(origin) = self.patch_origin(PatchOperation::Discard) else {
+            return false;
+        };
+        self.pending_structural_discard = Some((selection, origin));
+        true
+    }
+
+    /// The confirmation's Discard for a Difftastic diff: applies the pending
+    /// request if the diff it came from is still current.
+    pub(in crate::view) fn confirm_pending_structural_discard(
+        &mut self,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        if let Some((selection, origin)) = self.pending_structural_discard.take() {
+            self.prepare_structural_patch_from_origin(selection, origin, cx);
+        }
     }
 
     /// Prepares the exact Git patch for `selection` off the UI thread, then

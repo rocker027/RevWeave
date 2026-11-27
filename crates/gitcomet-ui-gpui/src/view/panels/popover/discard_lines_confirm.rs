@@ -7,6 +7,7 @@ pub(super) fn panel(
     this: &mut PopoverHost,
     repo_id: RepoId,
     lines: Option<usize>,
+    patch: Option<gitcomet_state::msg::ContentBytes>,
     cx: &mut gpui::Context<PopoverHost>,
 ) -> gpui::Div {
     let theme = this.theme;
@@ -18,12 +19,12 @@ pub(super) fn panel(
             format!("This will discard {count} selected lines from the working tree.")
         }
         (None, Language::English) => {
-            "This will discard the selected lines from the working tree.".to_string()
+            "This will discard the selected changes from the working tree.".to_string()
         }
         (Some(count), Language::TraditionalChinese) => {
             format!("這會從工作樹捨棄選取的 {count} 行。")
         }
-        (None, Language::TraditionalChinese) => "這會從工作樹捨棄選取的行。".to_string(),
+        (None, Language::TraditionalChinese) => "這會從工作樹捨棄選取的變更。".to_string(),
     };
     ConfirmDialog::new(text(cx, "Discard lines", "捨棄選取的行"), DIALOG_420_WIDTH)
         .text(theme, detail)
@@ -45,12 +46,24 @@ pub(super) fn panel(
             ),
             components::Button::new("discard_lines_go", text(cx, "Discard", "捨棄"))
                 .style(components::ButtonStyle::Danger)
-                .on_click(theme, cx, move |this, _e, _w, cx| {
-                    let _ = repo_id;
-                    this.diff_renderer.update(cx, |pane, cx| {
-                        pane.discard_selected_lines_confirmed(cx);
-                    });
-                    this.close_popover(cx);
+                .on_click(theme, cx, move |this, _e, window, cx| {
+                    this.close_popover_and_restore_focus(window, cx);
+                    match &patch {
+                        // Built when the dialog opened: if the file changed
+                        // since, it no longer applies and discards nothing.
+                        Some(patch) => this.context_menu_activate_action(
+                            ContextMenuAction::ApplyWorktreePatch {
+                                repo_id,
+                                patch: patch.clone(),
+                                reverse: true,
+                            },
+                            window,
+                            cx,
+                        ),
+                        None => this.diff_renderer.update(cx, |pane, cx| {
+                            pane.confirm_pending_structural_discard(cx);
+                        }),
+                    }
                 }),
             cx,
         )
