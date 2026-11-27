@@ -1746,6 +1746,19 @@ fn reduce_inner(
             vec![Effect::CheckoutCommit { repo_id, commit_id }]
         }
         Msg::Bisect { repo_id, step } => {
+            // One step at a time, and never under a pull that is about to
+            // update the checkout: a second click before the UI caught up
+            // would judge a commit the first step already moved away from.
+            let busy = state
+                .repos
+                .iter()
+                .find(|r| r.id == repo_id)
+                .is_none_or(|repo| {
+                    repo.local_actions_in_flight > 0 || repo.worktree_pull_in_flight > 0
+                });
+            if busy {
+                return Vec::new();
+            }
             begin_head_changing_local_action(state, repo_id);
             vec![Effect::Bisect { repo_id, step }]
         }

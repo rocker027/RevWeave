@@ -429,25 +429,26 @@ impl BisectVerdict {
     }
 }
 
-/// A worktree's `git bisect` session, read from its `refs/bisect/` refs.
+/// A worktree's `git bisect` session, read from its `refs/bisect/` refs and
+/// the log git keeps of it.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BisectState {
     pub bad: Option<CommitId>,
     pub good: Vec<CommitId>,
     pub skipped: Vec<CommitId>,
     /// Commits left to test after the checked-out one (git's `bisect_nr`),
-    /// once a bad and a good commit are both known.
+    /// once a bad and a good commit are both known. `None` when unknown.
     pub remaining: Option<usize>,
     /// Roughly how many steps are left (git's `bisect_steps`).
     pub steps: Option<usize>,
-    /// The first bad commit, once it is the only candidate left.
+    /// The first bad commit, once git has found it.
     pub first_bad: Option<CommitId>,
-    /// Commits in the range still in question, the bad one included (git's
-    /// `bisect_all`).
-    pub candidates: Option<usize>,
-    /// Every candidate but the bad commit was skipped: git cannot narrow the
-    /// first bad commit down further.
+    /// Git found every candidate left skipped: it cannot narrow the first
+    /// bad commit down further.
     pub only_skipped_left: bool,
+    /// The session was started outside RevWeave with terms other than
+    /// good/bad, which RevWeave's verdicts would not match.
+    pub custom_terms: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1623,10 +1624,12 @@ pub trait GitRepository: Send + Sync {
     /// Records `verdict` for `commit`, starting a session first when none
     /// runs. Git checks out the next commit to test once a bad and a good
     /// commit are known.
+    /// `commit: None` marks the commit checked out for testing, as git
+    /// resolves it when the mark runs.
     fn bisect_mark_with_output(
         &self,
         _verdict: BisectVerdict,
-        _commit: &CommitId,
+        _commit: Option<&CommitId>,
     ) -> Result<CommandOutput> {
         Err(Error::new(ErrorKind::Unsupported(
             "git bisect is not implemented for this backend",

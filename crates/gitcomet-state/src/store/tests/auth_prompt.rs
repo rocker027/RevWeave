@@ -430,6 +430,7 @@ fn commit_finished_auth_error_uses_pending_retry_and_clears_it() {
         push_after_commit: false,
         hooks: gitcomet_core::services::GitHooks::Run,
         stage_paths: Vec::new(),
+        fixup_target: None,
     });
 
     reduce(
@@ -443,6 +444,7 @@ fn commit_finished_auth_error_uses_pending_retry_and_clears_it() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Err(auth_error(
@@ -465,6 +467,7 @@ fn commit_finished_auth_error_uses_pending_retry_and_clears_it() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             }
         }
     );
@@ -482,6 +485,7 @@ fn commit_amend_finished_auth_error_uses_pending_retry_with_amend() {
         push_after_commit: false,
         hooks: gitcomet_core::services::GitHooks::Skip,
         stage_paths: Vec::new(),
+        fixup_target: None,
     });
 
     reduce(
@@ -495,6 +499,7 @@ fn commit_amend_finished_auth_error_uses_pending_retry_with_amend() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Skip,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Err(auth_error(
@@ -517,6 +522,7 @@ fn commit_amend_finished_auth_error_uses_pending_retry_with_amend() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Skip,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             }
         }
     );
@@ -536,6 +542,7 @@ fn commit_auth_retry_replays_the_failed_commit_not_the_latest_one() {
         push_after_commit: false,
         hooks: gitcomet_core::services::GitHooks::Skip,
         stage_paths: Vec::new(),
+        fixup_target: None,
     };
     state.repos[0].pending.commit_retry = Some(CommitRequest {
         message: "second".to_string(),
@@ -543,6 +550,7 @@ fn commit_auth_retry_replays_the_failed_commit_not_the_latest_one() {
         push_after_commit: false,
         hooks: gitcomet_core::services::GitHooks::Run,
         stage_paths: Vec::new(),
+        fixup_target: None,
     });
 
     reduce(
@@ -582,6 +590,7 @@ fn commit_auth_retry_does_not_stage_again() {
         push_after_commit: false,
         hooks: gitcomet_core::services::GitHooks::Run,
         stage_paths: vec![std::path::PathBuf::from("a.txt")],
+        fixup_target: None,
     };
     let effects = reduce(
         &mut repos,
@@ -865,6 +874,7 @@ fn submit_auth_prompt_replays_commit_and_commit_amend() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
     });
@@ -895,6 +905,7 @@ fn submit_auth_prompt_replays_commit_and_commit_amend() {
             push_after_commit: false,
             hooks: gitcomet_core::services::GitHooks::Run,
             stage_paths: Vec::new(),
+            fixup_target: None,
         })
     );
 
@@ -912,6 +923,7 @@ fn submit_auth_prompt_replays_commit_and_commit_amend() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Skip,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
     });
@@ -945,6 +957,7 @@ fn submit_auth_prompt_replays_commit_and_commit_amend() {
             push_after_commit: false,
             hooks: gitcomet_core::services::GitHooks::Skip,
             stage_paths: Vec::new(),
+            fixup_target: None,
         })
     );
 }

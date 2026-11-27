@@ -295,6 +295,7 @@ impl PopoverHost {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths,
+                fixup_target: None,
             },
         });
         self.pending_commit_prompts.insert(repo_id, pending);

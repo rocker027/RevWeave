@@ -75,6 +75,7 @@ fn bare_worktree_commands_refuse_without_mutating_operation_counters() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
         Msg::DropStash { repo_id, index: 0 },

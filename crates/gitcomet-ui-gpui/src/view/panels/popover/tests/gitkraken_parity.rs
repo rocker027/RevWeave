@@ -479,6 +479,7 @@ fn the_toolbar_undo_moves_a_committed_branch_back(cx: &mut gpui::TestAppContext)
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             result: Ok(gitcomet_core::services::CommitOperationOutcome {
                 local_branch: Some("main".to_string()),
@@ -535,6 +536,7 @@ fn undo_refuses_when_the_branch_is_no_longer_checked_out() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             result: Ok(gitcomet_core::services::CommitOperationOutcome {
                 local_branch: Some("main".to_string()),

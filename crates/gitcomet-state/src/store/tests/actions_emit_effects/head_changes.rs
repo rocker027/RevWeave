@@ -25,6 +25,7 @@ fn commit_emits_effect() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
     );
@@ -131,6 +132,7 @@ fn commit_amend_emits_effect() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
     );
@@ -260,6 +262,24 @@ fn bisect_step_emits_effect_and_counts_as_a_local_action() {
         .find(|repo| repo.id == RepoId(1))
         .expect("repo should exist");
     assert_eq!(repo.local_actions_in_flight, 1);
+
+    // A second step before the first finished is dropped.
+    let effects = reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::Bisect {
+            repo_id: RepoId(1),
+            step,
+        },
+    );
+    assert!(effects.is_empty());
+    let repo = state
+        .repos
+        .iter()
+        .find(|repo| repo.id == RepoId(1))
+        .expect("repo should exist");
+    assert_eq!(repo.local_actions_in_flight, 1);
 }
 
 #[test]
@@ -330,6 +350,7 @@ fn commit_bumps_ops_rev() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
     );
@@ -372,6 +393,7 @@ fn commit_finished_clears_commit_state_and_requests_primary_refreshes() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Ok(gitcomet_core::services::CommitOperationOutcome::default()),
@@ -442,6 +464,7 @@ fn commit_finished_invalidates_loaded_blame() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Ok(gitcomet_core::services::CommitOperationOutcome::default()),
@@ -670,6 +693,7 @@ fn commit_and_amend_finished_cover_success_error_and_unknown_repo_paths() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Ok(gitcomet_core::services::CommitOperationOutcome::default()),
@@ -708,6 +732,7 @@ fn commit_and_amend_finished_cover_success_error_and_unknown_repo_paths() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Err(Error::new(ErrorKind::Backend("commit boom".to_string()))),
@@ -735,6 +760,7 @@ fn commit_and_amend_finished_cover_success_error_and_unknown_repo_paths() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Ok(gitcomet_core::services::CommitOperationOutcome::default()),
@@ -761,6 +787,7 @@ fn commit_and_amend_finished_cover_success_error_and_unknown_repo_paths() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Err(Error::new(ErrorKind::Backend("amend boom".to_string()))),
@@ -786,6 +813,7 @@ fn commit_and_amend_finished_cover_success_error_and_unknown_repo_paths() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id: RepoId(999),
             result: Ok(gitcomet_core::services::CommitOperationOutcome::default()),
@@ -803,6 +831,7 @@ fn commit_and_amend_finished_cover_success_error_and_unknown_repo_paths() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id: RepoId(999),
             result: Ok(gitcomet_core::services::CommitOperationOutcome::default()),

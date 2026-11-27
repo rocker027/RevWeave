@@ -870,6 +870,8 @@ impl HistoryView {
                 repo.tags_rev.hash(&mut hasher);
             }
             repo.stashes_rev.hash(&mut hasher);
+            // Rows mark the bisect session's verdicts.
+            repo.bisect_rev.hash(&mut hasher);
             if include_selection {
                 repo.history_state.selected_commit_rev.hash(&mut hasher);
                 // The browsed commit's mark, which can follow the selection.

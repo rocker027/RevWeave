@@ -57,6 +57,7 @@ impl CommitOptions {
                 push_after_commit: self.push_after,
                 hooks,
                 stage_paths,
+                fixup_target: None,
             },
         }
     }

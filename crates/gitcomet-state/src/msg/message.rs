@@ -97,6 +97,9 @@ pub enum BisectStep {
         verdict: BisectVerdict,
         commit_id: CommitId,
     },
+    /// Records a verdict for the commit checked out for testing, as git
+    /// resolves it when the mark runs rather than as the UI last saw HEAD.
+    MarkCheckedOut { verdict: BisectVerdict },
     /// Ends the session and returns to where it started.
     Reset,
 }

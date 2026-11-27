@@ -67,6 +67,7 @@ fn commit_moved(
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             result: Ok(CommitOperationOutcome {
                 local_branch: Some("main".to_string()),

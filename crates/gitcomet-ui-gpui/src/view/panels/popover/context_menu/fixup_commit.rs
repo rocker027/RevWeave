@@ -30,7 +30,7 @@ pub(super) fn fixup_blocker(
     if repo.is_bare() {
         return Some(gitcomet_core::domain::WORKING_TREE_REQUIRED_MESSAGE);
     }
-    if repo.history_rewrite_busy() {
+    if repo.history_rewrite_busy() || repo.worktree_pull_in_flight > 0 {
         return Some("Finish the running Git operation to create a fixup commit");
     }
     // While these reload, a merge or rebase may still be waiting to be
@@ -53,11 +53,17 @@ pub(super) fn fixup_blocker(
     if summary.is_none_or(|summary| summary.trim().is_empty()) {
         return Some("This commit's subject is not loaded yet");
     }
-    let on_head_history = matches!(
+    (judged && !on_first_parent_history(repo, commit_id)).then_some(NOT_ON_HEAD_HISTORY)
+}
+
+/// Whether the target sits on HEAD's first-parent line, merges below HEAD
+/// included: a fixup is a new commit, so unlike a reword it needs no linear
+/// history to replay.
+fn on_first_parent_history(repo: &RepoState, commit_id: &CommitId) -> bool {
+    matches!(
         repo.first_parent_position_from_head(commit_id),
-        FirstParentPosition::Linear { .. }
-    );
-    (judged && !on_head_history).then_some(NOT_ON_HEAD_HISTORY)
+        FirstParentPosition::Linear { .. } | FirstParentPosition::BelowMerge
+    )
 }
 
 const NOT_ON_HEAD_HISTORY: &str =
@@ -71,11 +77,7 @@ pub(in crate::view) fn fixup_target_blocker(
     repo: &RepoState,
     commit_id: &CommitId,
 ) -> Option<&'static str> {
-    (!matches!(
-        repo.first_parent_position_from_head(commit_id),
-        FirstParentPosition::Linear { .. }
-    ))
-    .then_some(NOT_ON_HEAD_HISTORY)
+    (!on_first_parent_history(repo, commit_id)).then_some(NOT_ON_HEAD_HISTORY)
 }
 
 /// The menu entry, disabled while [`fixup_blocker`] names a reason.

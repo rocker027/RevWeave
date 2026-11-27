@@ -16,6 +16,7 @@ pub(in crate::view) fn bisect_mark_blocker(repo: &RepoState) -> Option<&'static 
         return Some(gitcomet_core::domain::WORKING_TREE_REQUIRED_MESSAGE);
     }
     let other_operation = repo.local_actions_in_flight > 0
+        || repo.worktree_pull_in_flight > 0
         || matches!(
             repo.sequencer_state,
             Loadable::Ready(state) if state != gitcomet_core::services::SequencerState::None
@@ -37,10 +38,15 @@ pub(in crate::view) fn bisect_mark_blocker(repo: &RepoState) -> Option<&'static 
     if dirty {
         return Some("Commit or stash your changes to bisect");
     }
-    if let Loadable::Ready(Some(bisect)) = &repo.bisect
-        && bisect.first_bad.is_some()
-    {
-        return Some("The first bad commit is found; end the bisect");
+    if let Loadable::Ready(Some(bisect)) = &repo.bisect {
+        if bisect.custom_terms {
+            return Some(
+                "This bisect was started with its own terms; continue it in a terminal or end it",
+            );
+        }
+        if bisect.first_bad.is_some() {
+            return Some("The first bad commit is found; end the bisect");
+        }
     }
     None
 }
@@ -152,6 +158,33 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn a_session_blocks_amend() {
+        let mut repo = clean_repo();
+        repo.head_branch = Loadable::Ready("HEAD".to_string());
+        assert!(crate::view::mod_helpers::amend_allowed(&repo));
+        repo.bisect = Loadable::Ready(Some(BisectState::default()));
+        assert!(!crate::view::mod_helpers::amend_allowed(&repo));
+    }
+
+    #[test]
+    fn a_session_started_with_its_own_terms_only_ends() {
+        let mut repo = clean_repo();
+        repo.bisect = Loadable::Ready(Some(BisectState {
+            custom_terms: true,
+            ..Default::default()
+        }));
+        assert_eq!(
+            bisect_mark_blocker(&repo),
+            Some("This bisect was started with its own terms; continue it in a terminal or end it")
+        );
+        let (items, _) = entries(&repo, &CommitId("c1".into()), false, Language::English);
+        assert_eq!(
+            labels(&items).last().map(String::as_str),
+            Some("End bisect")
+        );
     }
 
     #[test]

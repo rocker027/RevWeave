@@ -619,6 +619,7 @@ fn review_commit_and_amend_push_wait_for_running_push() {
             push_after_commit: true,
             hooks: gitcomet_core::services::GitHooks::Run,
             stage_paths: Vec::new(),
+            fixup_target: None,
         });
         let result = Ok(gitcomet_core::services::CommitOperationOutcome {
             local_branch: Some("adjusted/main(unlocked)".into()),
@@ -632,6 +633,7 @@ fn review_commit_and_amend_push_wait_for_running_push() {
                 push_after_commit: true,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result,
@@ -995,6 +997,7 @@ fn every_pull_and_push_path_on_an_adjusted_branch_avoids_plain_git() {
         push_after_commit: true,
         hooks: gitcomet_core::services::GitHooks::Run,
         stage_paths: Vec::new(),
+        fixup_target: None,
     });
     let effects = reduce(
         &mut repos,
@@ -1007,6 +1010,7 @@ fn every_pull_and_push_path_on_an_adjusted_branch_avoids_plain_git() {
                 push_after_commit: true,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
             repo_id,
             result: Ok(gitcomet_core::services::CommitOperationOutcome {

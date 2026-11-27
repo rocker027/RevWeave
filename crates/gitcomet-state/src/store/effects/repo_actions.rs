@@ -453,6 +453,9 @@ pub(super) fn schedule_bisect(
             verdict.git_term(),
             short_commit_id(commit_id.as_ref())
         )),
+        crate::msg::BisectStep::MarkCheckedOut { verdict } => {
+            Some(format!("{} HEAD", verdict.git_term()))
+        }
         crate::msg::BisectStep::Reset => Some("reset".to_string()),
     };
     schedule_repo_action_with_hook(
@@ -465,7 +468,10 @@ pub(super) fn schedule_bisect(
         move |repo| {
             match step {
                 crate::msg::BisectStep::Mark { verdict, commit_id } => {
-                    repo.bisect_mark_with_output(verdict, &commit_id)
+                    repo.bisect_mark_with_output(verdict, Some(&commit_id))
+                }
+                crate::msg::BisectStep::MarkCheckedOut { verdict } => {
+                    repo.bisect_mark_with_output(verdict, None)
                 }
                 crate::msg::BisectStep::Reset => repo.bisect_reset_with_output(),
             }
@@ -1071,6 +1077,7 @@ pub(super) fn schedule_commit(
     let context = commit_context(&request.message, request.hooks);
     let (message, amend, hooks) = (request.message.clone(), request.amend, request.hooks);
     let stage_paths = request.stage_paths.clone();
+    let fixup_target = request.fixup_target.clone();
     schedule_repo_action_with_result(
         executor,
         repos,
@@ -1079,6 +1086,9 @@ pub(super) fn schedule_commit(
         if amend { "Amend commit" } else { "Commit" },
         context,
         move |repo| {
+            if fixup_target.is_some() {
+                fixup_commit_preflight(repo.as_ref())?;
+            }
             run_with_git_auth(auth, || {
                 // Staged in the same run, so the commit never starts before
                 // the stage is done. Other actions on the repository can
@@ -1101,6 +1111,23 @@ pub(super) fn schedule_commit(
             result,
         },
     );
+}
+
+/// Refuses a fixup commit when the repository is no longer where the menu
+/// saw it: a plain commit would conclude a pending merge or sequencer step
+/// under a `fixup!` message, or move a bisect off its commit under test.
+fn fixup_commit_preflight(repo: &dyn GitRepository) -> Result<(), Error> {
+    let cancellation = gitcomet_core::services::CancellationToken::new();
+    let busy = repo.sequencer_state(&cancellation)?
+        != gitcomet_core::services::SequencerState::None
+        || repo.merge_commit_message(&cancellation)?.is_some()
+        || repo.bisect_state(&cancellation)?.is_some();
+    if busy {
+        return Err(Error::new(gitcomet_core::error::ErrorKind::Backend(
+            "Create fixup commit: a Git operation is in progress; finish it first".to_string(),
+        )));
+    }
+    Ok(())
 }
 
 pub(super) fn schedule_stash(
@@ -1355,5 +1382,70 @@ mod delete_branches_tests {
 
         assert!(!message.contains(". ."));
         assert!(message.ends_with("feat/a"));
+    }
+}
+
+#[cfg(test)]
+mod fixup_preflight_tests {
+    use super::fixup_commit_preflight;
+    use gitcomet_core::services::GitBackend;
+    use std::path::Path;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .output()
+            .expect("run git");
+        assert!(status.status.success(), "git {args:?}: {status:?}");
+    }
+
+    fn repo_with_a_side_branch() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path();
+        git(path, &["init", "-q", "-b", "main"]);
+        std::fs::write(path.join("a.txt"), "a\n").unwrap();
+        git(path, &["add", "."]);
+        git(path, &["commit", "-qm", "base"]);
+        git(path, &["switch", "-qc", "side"]);
+        std::fs::write(path.join("b.txt"), "b\n").unwrap();
+        git(path, &["add", "."]);
+        git(path, &["commit", "-qm", "side"]);
+        git(path, &["switch", "-q", "main"]);
+        dir
+    }
+
+    #[test]
+    fn a_clean_repository_takes_a_fixup() {
+        let dir = repo_with_a_side_branch();
+        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
+        assert!(fixup_commit_preflight(repo.as_ref()).is_ok());
+    }
+
+    /// A merge that waits for its commit would be concluded by the fixup.
+    #[test]
+    fn a_pending_merge_refuses_a_fixup() {
+        let dir = repo_with_a_side_branch();
+        git(dir.path(), &["merge", "--no-ff", "--no-commit", "side"]);
+        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
+        assert!(fixup_commit_preflight(repo.as_ref()).is_err());
+    }
+
+    #[test]
+    fn a_bisect_session_refuses_a_fixup() {
+        let dir = repo_with_a_side_branch();
+        git(dir.path(), &["bisect", "start"]);
+        let repo = gitcomet_git_gix::GixBackend.open(dir.path()).unwrap();
+        assert!(fixup_commit_preflight(repo.as_ref()).is_err());
     }
 }

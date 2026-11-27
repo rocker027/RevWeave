@@ -1,7 +1,11 @@
 //! `git bisect`: reading a worktree's session and recording verdicts.
 //!
-//! The session lives in the worktree's own git dir (`BISECT_START`) and its
-//! per-worktree `refs/bisect/` refs, so each worktree bisects on its own.
+//! The session lives in the worktree's own git dir (`BISECT_START`,
+//! `BISECT_LOG`, `BISECT_TERMS`, `BISECT_NAMES`) and its per-worktree
+//! `refs/bisect/` refs, so each worktree bisects on its own. Whether the
+//! search ended is read from the log git writes, not inferred from the
+//! commit range: with good commits off the bad one's line, git still has
+//! merge bases to test when the range looks done.
 
 use super::GixRepo;
 use crate::util::{
@@ -9,17 +13,32 @@ use crate::util::{
     run_git_with_output, validate_hex_commit_id,
 };
 use gitcomet_core::domain::CommitId;
+use gitcomet_core::error::{Error, ErrorKind};
 use gitcomet_core::services::{BisectState, BisectVerdict, CommandOutput, Result};
 
 impl GixRepo {
+    fn bisect_file(&self, name: &str) -> std::path::PathBuf {
+        self.repo().git_dir().join(name)
+    }
+
     fn bisect_in_progress(&self) -> bool {
-        self.repo().git_dir().join("BISECT_START").is_file()
+        self.bisect_file("BISECT_START").is_file()
     }
 
     pub(super) fn bisect_state_impl(&self) -> Result<Option<BisectState>> {
         if !self.bisect_in_progress() {
             return Ok(None);
         }
+        let read = |name| std::fs::read_to_string(self.bisect_file(name)).unwrap_or_default();
+        let custom_terms = !matches!(
+            read("BISECT_TERMS")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .as_slice(),
+            [] | ["bad", "good"]
+        );
+        let path_limited = !read("BISECT_NAMES").trim().is_empty();
+
         let mut cmd = self.git_workdir_cmd();
         cmd.args([
             "for-each-ref",
@@ -28,58 +47,66 @@ impl GixRepo {
         ]);
         let refs = run_git_capture(cmd, "git for-each-ref refs/bisect/")?;
         let mut state = parse_bisect_refs(&refs);
-        if let Some(bad) = state.bad.clone()
+        state.custom_terms = custom_terms;
+        apply_bisect_log(&mut state, &read("BISECT_LOG"));
+
+        // Progress is a hint: without it the session still shows and can be
+        // ended. A path-limited search counts commits git ignores, so skip it.
+        let searching = state.first_bad.is_none() && !state.only_skipped_left;
+        if searching
+            && !path_limited
+            && !custom_terms
+            && let Some(bad) = state.bad.clone()
             && !state.good.is_empty()
         {
             let mut cmd = self.git_workdir_cmd();
             cmd.args(["rev-list", "--bisect-vars", bad.as_ref(), "--not"]);
             cmd.args(state.good.iter().map(|good| good.as_ref()));
-            let vars = run_git_capture(cmd, "git rev-list --bisect-vars")?;
-            apply_bisect_vars(&mut state, &bad, &vars);
-            if state.first_bad.is_none() && !state.skipped.is_empty() {
-                self.mark_only_skipped_left(&mut state, &bad)?;
+            if let Ok(vars) = run_git_capture(cmd, "git rev-list --bisect-vars") {
+                apply_bisect_vars(&mut state, &vars);
             }
         }
         Ok(Some(state))
     }
 
-    /// Whether every candidate besides the bad commit was skipped, so git
-    /// cannot narrow it further. Lists the range only when the skips could
-    /// cover it, which keeps a long session's reads cheap.
-    fn mark_only_skipped_left(&self, state: &mut BisectState, bad: &CommitId) -> Result<()> {
-        let Some(all) = state.candidates else {
-            return Ok(());
-        };
-        if all == 0 || all - 1 > state.skipped.len() {
-            return Ok(());
-        }
-        let mut cmd = self.git_workdir_cmd();
-        cmd.args(["rev-list", bad.as_ref(), "--not"]);
-        cmd.args(state.good.iter().map(|good| good.as_ref()));
-        let range = run_git_capture(cmd, "git rev-list <bad> --not <good>")?;
-        state.only_skipped_left = range
-            .lines()
-            .map(str::trim)
-            .filter(|sha| !sha.is_empty() && *sha != bad.as_ref())
-            .all(|sha| state.skipped.iter().any(|skip| skip.as_ref() == sha));
-        Ok(())
-    }
-
     pub(super) fn bisect_mark_with_output_impl(
         &self,
         verdict: BisectVerdict,
-        commit: &CommitId,
+        commit: Option<&CommitId>,
     ) -> Result<CommandOutput> {
-        validate_hex_commit_id(commit)?;
+        if let Some(commit) = commit {
+            validate_hex_commit_id(commit)?;
+            // Refuse before starting a session: a commit whose object is gone
+            // would leave an empty session behind.
+            let mut cmd = self.git_workdir_cmd();
+            cmd.args(["rev-parse", "--verify", "--quiet"])
+                .arg(format!("{}^{{commit}}", commit.as_ref()));
+            if run_git_capture(cmd, "git rev-parse --verify <commit>").is_err() {
+                return Err(Error::new(ErrorKind::Backend(format!(
+                    "git bisect: {} is not a commit in this repository",
+                    commit.as_ref()
+                ))));
+            }
+        } else if !self.bisect_in_progress() {
+            return Err(Error::new(ErrorKind::Backend(
+                "git bisect: no session to mark the checked-out commit in".to_string(),
+            )));
+        }
         if !self.bisect_in_progress() {
             let mut cmd = self.git_workdir_cmd();
             cmd.args(["bisect", "start"]);
             run_git_simple(cmd, "git bisect start")?;
         }
         let term = verdict.git_term();
-        let label = format!("git bisect {term} {}", commit.as_ref());
         let mut cmd = self.git_workdir_cmd();
-        cmd.args(["bisect", term, commit.as_ref()]);
+        cmd.args(["bisect", term]);
+        let label = match commit {
+            Some(commit) => {
+                cmd.arg(commit.as_ref());
+                format!("git bisect {term} {}", commit.as_ref())
+            }
+            None => format!("git bisect {term}"),
+        };
         let output = run_git_raw_output(cmd, &label)?;
         // Exit 2 with this notice ends the search inconclusively: every
         // candidate left was skipped. The verdict is recorded, so it is a
@@ -100,6 +127,9 @@ impl GixRepo {
     }
 }
 
+/// What `git bisect` prints when only skipped commits are left to test.
+const ONLY_SKIPPED_LEFT: &str = "only 'skip'ped commits left to test";
+
 /// `refs/bisect/bad`, `refs/bisect/good-<sha>` and `refs/bisect/skip-<sha>`,
 /// one `<refname>\t<objectname>` per line.
 fn parse_bisect_refs(refs: &str) -> BisectState {
@@ -119,13 +149,27 @@ fn parse_bisect_refs(refs: &str) -> BisectState {
     state
 }
 
-/// Reads `bisect_nr`, `bisect_steps` and `bisect_all` from
-/// `git rev-list --bisect-vars`: with only the bad commit left in the range,
-/// it is the first bad commit.
-/// What `git bisect` prints when only skipped commits are left to test.
-const ONLY_SKIPPED_LEFT: &str = "only 'skip'ped commits left to test";
+/// The outcome git logged after the session's last command: `# first '<term>'
+/// commit: [<sha>]` once found, `# only skipped commits left to test` when
+/// the skips cover every candidate. A later command clears both.
+fn apply_bisect_log(state: &mut BisectState, log: &str) {
+    for line in log.lines() {
+        if line.starts_with("git bisect ") {
+            state.first_bad = None;
+            state.only_skipped_left = false;
+        } else if let Some(rest) = line.strip_prefix("# first '")
+            && let Some((_, after)) = rest.split_once("' commit: [")
+            && let Some((sha, _)) = after.split_once(']')
+        {
+            state.first_bad = Some(CommitId(sha.trim().into()));
+        } else if line.trim() == "# only skipped commits left to test" {
+            state.only_skipped_left = true;
+        }
+    }
+}
 
-fn apply_bisect_vars(state: &mut BisectState, bad: &CommitId, vars: &str) {
+/// Reads `bisect_nr` and `bisect_steps` from `git rev-list --bisect-vars`.
+fn apply_bisect_vars(state: &mut BisectState, vars: &str) {
     let value = |key: &str| {
         vars.lines()
             .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
@@ -133,10 +177,6 @@ fn apply_bisect_vars(state: &mut BisectState, bad: &CommitId, vars: &str) {
     };
     state.remaining = value("bisect_nr");
     state.steps = value("bisect_steps");
-    state.candidates = value("bisect_all");
-    if value("bisect_all") == Some(1) {
-        state.first_bad = Some(bad.clone());
-    }
 }
 
 #[cfg(test)]
@@ -157,22 +197,40 @@ mod tests {
     }
 
     #[test]
-    fn bisect_vars_give_progress_and_the_first_bad_commit() {
-        let bad = CommitId("b1".into());
+    fn bisect_vars_give_progress() {
         let mut state = BisectState::default();
         apply_bisect_vars(
             &mut state,
-            &bad,
             "bisect_rev='m1'\nbisect_nr=3\nbisect_good=1\nbisect_bad=2\nbisect_all=7\nbisect_steps=2\n",
         );
         assert_eq!((state.remaining, state.steps), (Some(3), Some(2)));
+    }
+
+    #[test]
+    fn the_log_says_when_the_search_ended() {
+        let mut state = BisectState::default();
+        apply_bisect_log(
+            &mut state,
+            "git bisect start\n# bad: [b] c5\ngit bisect bad b\ngit bisect good g\n\
+             # first 'bad' commit: [a925ec4] c4\n",
+        );
+        assert_eq!(state.first_bad, Some(CommitId("a925ec4".into())));
+
+        let mut state = BisectState::default();
+        apply_bisect_log(
+            &mut state,
+            "git bisect skip s\n# only skipped commits left to test\n\
+             # possible first 'bad' commit: [b] c5\n",
+        );
+        assert!(state.only_skipped_left);
         assert_eq!(state.first_bad, None);
 
-        apply_bisect_vars(
+        // A command after the outcome reopens the search.
+        let mut state = BisectState::default();
+        apply_bisect_log(
             &mut state,
-            &bad,
-            "bisect_nr=0\nbisect_all=1\nbisect_steps=0\n",
+            "# only skipped commits left to test\ngit bisect good s\n",
         );
-        assert_eq!(state.first_bad, Some(bad));
+        assert!(!state.only_skipped_left);
     }
 }

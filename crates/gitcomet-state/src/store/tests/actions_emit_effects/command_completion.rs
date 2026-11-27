@@ -298,6 +298,7 @@ fn repo_operations_emit_effects() {
                 push_after_commit: false,
                 hooks: gitcomet_core::services::GitHooks::Run,
                 stage_paths: Vec::new(),
+                fixup_target: None,
             },
         },
     );

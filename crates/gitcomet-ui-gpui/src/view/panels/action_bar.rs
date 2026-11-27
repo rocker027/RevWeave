@@ -217,12 +217,13 @@ impl ActionBarView {
     /// BISECTING, the session's status, and Good / Bad / Skip for the
     /// checked-out commit plus End. Once the first bad commit is found its
     /// status selects it in History.
-    #[allow(clippy::too_many_arguments)]
+    ///
+    /// The verdict buttons mark the commit git checked out, resolved when the
+    /// mark runs: the history's idea of HEAD can lag, or be a filtered row.
     fn bisect_controls(
         &self,
         repo_id: RepoId,
         bisect: &gitcomet_core::services::BisectState,
-        head: Option<CommitId>,
         blocker: Option<&'static str>,
         end_disabled: bool,
         language: Language,
@@ -232,25 +233,19 @@ impl ActionBarView {
         use gitcomet_state::msg::BisectStep;
         let theme = self.theme;
         let status = bisect_status(bisect, language);
-        let mark_blocker = blocker.or_else(|| {
-            head.is_none()
-                .then_some("The checked-out commit is not known yet")
-        });
+        let mark_blocker = blocker;
         let mark_button = |cx: &mut gpui::Context<Self>,
                            id: &'static str,
                            label: &'static str,
                            verdict: BisectVerdict| {
-            let head = head.clone();
             components::Button::new(id, label)
                 .style(components::ButtonStyle::Outlined)
                 .disabled(mark_blocker.is_some())
                 .on_click(theme, cx, move |this, _e: &ClickEvent, _w, _cx| {
-                    if let Some(commit_id) = head.clone() {
-                        this.store.dispatch(Msg::Bisect {
-                            repo_id,
-                            step: BisectStep::Mark { verdict, commit_id },
-                        });
-                    }
+                    this.store.dispatch(Msg::Bisect {
+                        repo_id,
+                        step: BisectStep::MarkCheckedOut { verdict },
+                    });
                 })
                 .when_some(mark_blocker, |button, text| {
                     button.gitcomet_tooltip(theme, text.into())
@@ -983,7 +978,7 @@ impl BarItemOwner for ActionBarView {
             .map(active_sequencer_state)
             .and_then(|state| sequencer_banner(state, language));
         // The bisect controls stand in for the sequencer's while a session
-        // runs: (session, checked-out commit, why marking is unavailable).
+        // runs: (session, why marking is unavailable, whether End is).
         let bisect_controls = self
             .active_repo()
             .filter(|_| !is_merging && sequencer_banner.is_none())
@@ -991,7 +986,6 @@ impl BarItemOwner for ActionBarView {
                 Loadable::Ready(Some(bisect)) => Some((
                     repo.id,
                     bisect.clone(),
-                    repo.head_commit_id(),
                     crate::view::panels::popover::context_menu::bisect::bisect_mark_blocker(repo),
                     repo.local_actions_in_flight > 0 || repo.is_bare(),
                 )),
@@ -2001,11 +1995,10 @@ impl BarItemOwner for ActionBarView {
                 });
             let operation_controls = operation_controls.when_some(
                 bisect_controls,
-                |d, (repo_id, bisect, head, blocker, end_disabled)| {
+                |d, (repo_id, bisect, blocker, end_disabled)| {
                     d.child(self.bisect_controls(
                         repo_id,
                         &bisect,
-                        head,
                         blocker,
                         end_disabled,
                         language,

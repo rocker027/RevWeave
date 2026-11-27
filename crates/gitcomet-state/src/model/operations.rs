@@ -218,6 +218,11 @@ pub struct CommitRequest {
     /// Paths staged by the same operation just before the commit, for
     /// "Stage all and commit". Empty stages nothing.
     pub stage_paths: Vec<std::path::PathBuf>,
+    /// The commit a "Create fixup commit" request folds into. Such a commit
+    /// is checked against the repository right before it runs (and again on
+    /// an auth retry): a merge, rebase, sequencer step or bisect that began
+    /// since the menu was read must not be concluded or derailed by it.
+    pub fixup_target: Option<gitcomet_core::domain::CommitId>,
 }
 
 #[derive(Clone, Debug)]

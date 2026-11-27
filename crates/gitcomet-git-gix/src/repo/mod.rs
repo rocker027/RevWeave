@@ -1753,7 +1753,7 @@ impl GitRepository for GixRepo {
     fn bisect_mark_with_output(
         &self,
         verdict: gitcomet_core::services::BisectVerdict,
-        commit: &CommitId,
+        commit: Option<&CommitId>,
     ) -> Result<CommandOutput> {
         let _operation = self.operation_lease()?;
         self.require_working_tree()?;

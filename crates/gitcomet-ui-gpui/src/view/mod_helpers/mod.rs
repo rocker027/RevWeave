@@ -216,10 +216,15 @@ pub(in crate::view) fn merge_in_progress(repo: &RepoState) -> bool {
     matches!(&repo.merge_commit_message, Loadable::Ready(Some(_)))
 }
 
-/// Whether HEAD has a commit to amend: no merge or rebase is in progress and
-/// HEAD is detached, or its branch exists (an unloaded list counts as yes).
+/// Whether HEAD has a commit to amend: no merge, rebase or bisect is in
+/// progress and HEAD is detached, or its branch exists (an unloaded list
+/// counts as yes). Amending during a bisect would rewrite a commit the
+/// session has already judged.
 pub(in crate::view) fn amend_allowed(repo: &RepoState) -> bool {
-    if merge_in_progress(repo) || matches!(repo.rebase_in_progress, Loadable::Ready(true)) {
+    if merge_in_progress(repo)
+        || matches!(repo.rebase_in_progress, Loadable::Ready(true))
+        || repo.bisect_in_progress()
+    {
         return false;
     }
     if repo.detached_head_commit.is_some() {

@@ -53,7 +53,7 @@ fn mark_checked_out(dir: &Path, repo: &Arc<dyn GitRepository>) {
     } else {
         BisectVerdict::Good
     };
-    repo.bisect_mark_with_output(verdict, &CommitId(head.into()))
+    repo.bisect_mark_with_output(verdict, Some(&CommitId(head.into())))
         .expect("mark the checked-out commit");
 }
 
@@ -66,15 +66,21 @@ fn bisect_finds_the_first_bad_commit_and_resets() {
     assert_eq!(state(&repo), None, "no session yet");
 
     // Marking the tip bad starts the session; nothing is checked out yet.
-    repo.bisect_mark_with_output(BisectVerdict::Bad, &CommitId(commits[4].clone().into()))
-        .expect("mark the tip bad");
+    repo.bisect_mark_with_output(
+        BisectVerdict::Bad,
+        Some(&CommitId(commits[4].clone().into())),
+    )
+    .expect("mark the tip bad");
     let started = state(&repo).expect("a session");
     assert_eq!(started.bad, Some(CommitId(commits[4].clone().into())));
     assert!(started.good.is_empty());
     assert_eq!(started.remaining, None);
 
-    repo.bisect_mark_with_output(BisectVerdict::Good, &CommitId(commits[0].clone().into()))
-        .expect("mark the root good");
+    repo.bisect_mark_with_output(
+        BisectVerdict::Good,
+        Some(&CommitId(commits[0].clone().into())),
+    )
+    .expect("mark the root good");
     let narrowed = state(&repo).expect("a session");
     assert!(narrowed.remaining.is_some(), "{narrowed:?}");
     assert_eq!(narrowed.first_bad, None);
@@ -106,18 +112,30 @@ fn skipping_every_candidate_left_is_a_result_not_an_error() {
     let dir = tempfile::tempdir().unwrap();
     let commits = repo_with_a_regression(dir.path());
     let repo = open(dir.path());
-    repo.bisect_mark_with_output(BisectVerdict::Bad, &CommitId(commits[4].clone().into()))
-        .expect("mark the tip bad");
-    repo.bisect_mark_with_output(BisectVerdict::Good, &CommitId(commits[0].clone().into()))
-        .expect("mark the root good");
+    repo.bisect_mark_with_output(
+        BisectVerdict::Bad,
+        Some(&CommitId(commits[4].clone().into())),
+    )
+    .expect("mark the tip bad");
+    repo.bisect_mark_with_output(
+        BisectVerdict::Good,
+        Some(&CommitId(commits[0].clone().into())),
+    )
+    .expect("mark the root good");
     // Git checks out c3 first, then c4.
     assert_eq!(git_stdout(dir.path(), &["rev-parse", "HEAD"]), commits[2]);
-    repo.bisect_mark_with_output(BisectVerdict::Good, &CommitId(commits[2].clone().into()))
-        .expect("mark c3 good");
+    repo.bisect_mark_with_output(
+        BisectVerdict::Good,
+        Some(&CommitId(commits[2].clone().into())),
+    )
+    .expect("mark c3 good");
     assert_eq!(git_stdout(dir.path(), &["rev-parse", "HEAD"]), commits[3]);
 
     let output = repo
-        .bisect_mark_with_output(BisectVerdict::Skip, &CommitId(commits[3].clone().into()))
+        .bisect_mark_with_output(
+            BisectVerdict::Skip,
+            Some(&CommitId(commits[3].clone().into())),
+        )
         .expect("skipping the last candidate ends the search, not in an error");
     assert_eq!(output.exit_code, Some(2));
     let left = state(&repo).expect("the session goes on");
@@ -125,5 +143,55 @@ fn skipping_every_candidate_left_is_a_result_not_an_error() {
     assert_eq!(left.first_bad, None);
     assert_eq!(left.skipped, vec![CommitId(commits[3].clone().into())]);
 
+    repo.bisect_reset_with_output().expect("reset");
+}
+
+/// Good and bad on sibling branches: git first tests their merge base, so the
+/// range alone (one candidate) does not mean the search is over.
+#[test]
+fn diverged_good_and_bad_test_the_merge_base_before_ending() {
+    test_git_env::ensure_initialized();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+    run_git(path, &["init", "-b", "main"]);
+    append_config(
+        path,
+        &[("user.email", "you@example.com"), ("user.name", "You")],
+    );
+    let commit = |message: &str| {
+        fs::write(path.join("value.txt"), format!("{message}\n")).expect("write file");
+        run_git(path, &["add", "."]);
+        run_git(
+            path,
+            &["-c", "commit.gpgsign=false", "commit", "-m", message],
+        );
+        git_stdout(path, &["rev-parse", "HEAD"])
+    };
+    let base = commit("base");
+    let bad = commit("bad");
+    run_git(path, &["switch", "-c", "side", &base]);
+    let good = commit("good");
+    run_git(path, &["switch", "main"]);
+
+    let repo = open(path);
+    repo.bisect_mark_with_output(BisectVerdict::Bad, Some(&CommitId(bad.clone().into())))
+        .expect("mark bad");
+    repo.bisect_mark_with_output(BisectVerdict::Good, Some(&CommitId(good.into())))
+        .expect("mark good");
+    assert_eq!(
+        git_stdout(path, &["rev-parse", "HEAD"]),
+        base,
+        "git tests the merge base"
+    );
+    let testing = state(&repo).expect("a session");
+    assert_eq!(testing.first_bad, None, "{testing:?}");
+
+    // The toolbar marks what git checked out, not a SHA the UI last saw.
+    repo.bisect_mark_with_output(BisectVerdict::Good, None)
+        .expect("mark the checked-out merge base good");
+    assert_eq!(
+        state(&repo).and_then(|state| state.first_bad),
+        Some(CommitId(bad.into()))
+    );
     repo.bisect_reset_with_output().expect("reset");
 }

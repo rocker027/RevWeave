@@ -463,6 +463,7 @@ fn commit_options_carry_the_hook_choice_to_commit_and_amend() {
                                 push_after_commit,
                                 hooks,
                                 stage_paths,
+                                fixup_target: None,
                             },
                     } => {
                         assert!(stage_paths.is_empty());

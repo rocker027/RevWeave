@@ -173,6 +173,8 @@ pub struct RepoState {
     pub sequencer_state: Loadable<SequencerState>,
     /// The worktree's `git bisect` session; `Ready(None)` outside one.
     pub bisect: Loadable<Option<BisectState>>,
+    /// Bumped whenever `bisect` changes, for views that mark its verdicts.
+    pub bisect_rev: u64,
     pub merge_commit_message: Loadable<Option<String>>,
     /// Commit whose full message the history hover card is showing, and the
     /// message once it arrives. A single slot: only one card is ever open, and
@@ -456,6 +458,7 @@ impl RepoState {
             rebase_in_progress: Loadable::NotLoaded,
             sequencer_state: Loadable::NotLoaded,
             bisect: Loadable::NotLoaded,
+            bisect_rev: 0,
             merge_commit_message: Loadable::NotLoaded,
             tag_push_previews: [None, None],
             hover_commit_message: None,
@@ -1208,6 +1211,7 @@ impl RepoState {
     pub(crate) fn set_bisect(&mut self, v: Loadable<Option<BisectState>>) {
         if self.bisect != v {
             self.bisect = v;
+            self.bisect_rev = self.bisect_rev.wrapping_add(1);
             self.merge_message_rev = self.merge_message_rev.wrapping_add(1);
         }
     }

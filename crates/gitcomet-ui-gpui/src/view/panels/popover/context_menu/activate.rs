@@ -937,6 +937,7 @@ impl PopoverHost {
                                 self.commit_skip_hooks_enabled,
                             ),
                             stage_paths: Vec::new(),
+                            fixup_target: Some(commit_id),
                         },
                     });
                 }

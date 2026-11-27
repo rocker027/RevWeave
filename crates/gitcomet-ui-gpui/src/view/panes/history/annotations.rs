@@ -98,8 +98,18 @@ impl HistoryView {
     ) -> RowAnnotation {
         let mut row = self.annotator_history_row(repo, commit, cx);
         if let Some(mark) = bisect_row_mark(repo, &commit.id, self.theme) {
-            // An annotator's leading marks keep their places, and their menu.
-            row.annotation.leading.push(mark);
+            // A right-click on an edge's marks opens the menu of the
+            // annotator that drew them, so the bisect mark goes to an edge
+            // no annotator's menu covers.
+            let annotation = &mut row.annotation;
+            if annotation.leading.is_empty() || row.mark_menus[0].is_none() {
+                annotation.leading.push(mark);
+            } else if annotation.trailing.is_empty() || row.mark_menus[1].is_none() {
+                annotation.trailing.push(mark);
+            } else {
+                annotation.leading.push(mark);
+                row.mark_menus[0] = None;
+            }
         }
         row
     }

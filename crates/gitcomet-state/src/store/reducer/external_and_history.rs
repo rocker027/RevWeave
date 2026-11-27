@@ -679,15 +679,18 @@ pub(super) fn bisect_state_loaded(
     result: std::result::Result<Option<gitcomet_core::services::BisectState>, Error>,
 ) -> Vec<Effect> {
     if let Some(repo_state) = state.repos.iter_mut().find(|r| r.id == repo_id) {
-        let value = match result {
-            Ok(bisect) => Loadable::Ready(bisect),
+        match result {
+            Ok(bisect) => repo_state.set_bisect(Loadable::Ready(bisect)),
             Err(e) => {
                 let error = e.to_string();
                 push_diagnostic(inputs, repo_state, DiagnosticKind::Error, error.clone());
-                Loadable::Error(error)
+                // A known session stays known: losing it would drop its End
+                // control and the history-rewrite guard with it.
+                if !repo_state.bisect_in_progress() {
+                    repo_state.set_bisect(Loadable::Error(error));
+                }
             }
-        };
-        repo_state.set_bisect(value);
+        }
     }
     Vec::new()
 }
