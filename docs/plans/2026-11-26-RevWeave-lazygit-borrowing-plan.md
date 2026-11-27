@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | reflog 建分支預設**不簽出** | 已採用的預設 | 與 commit 右鍵相反。理由：開啟對話框時簽出預設為 `!bare`（`view/panels/popover/host/mod.rs:2154`）；`CreateBranchAndCheckout` 會清空 Git Undo 紀錄（`gitcomet-state/src/store/reducer/git_undo.rs:231`），只建分支則會記入 Undo（同檔 `:64-86`）。使用者仍可在對話框勾選簽出。 |
 | 救回分支的名稱前綴 | 待決，預設留空 | Codex 提議 `rescue/`，其他兩方未表態。留空與 commit 右鍵一致；要預填就改 `name_prefix`。 |
-| 行級丟棄的做法 | **受阻：待使用者裁決** | Codex：確認框。Claude：不加確認框，改 toast 復原。agy：確認框並禁止從檔案清單觸發，二期改存 blob。`docs/shortcuts.md:295` 寫明現行「不詢問」是既有設計。 |
+| 行級丟棄的做法 | 已裁決：兩段式，先做防呆 | 2026-11-27 使用者裁決。第一段（確認框、禁止從 diff 外丟棄）已完成；第二段可復原丟棄另案。原討論：Codex 主張確認框，Claude 主張改 toast 復原，agy 主張確認框並禁止從檔案清單觸發、二期改存 blob。 |
 | 互動式 rebase 的 F 鍵 | **受阻：待使用者裁決** | 補 F 會推翻 Q10 與 `interactive_rebase.rs:1691` 的測試斷言。 |
 | 擴大 CAS Undo | **受阻：G3 審查狀態未知** | 對標計畫 `2026-11-18-RevWeave-gitkraken-parity-plan.md` 第 173 行仍寫「L3 獨立審查判定阻擋，待修」。`9ed7879d` 併入 master 不等於審查通過。本項屬該計畫 G3 的後續，以該計畫為準，本文件不另立版本。 |
 
@@ -45,7 +45,7 @@
 | S3 | 圖譜模式：模式狀態列＋列 chip 泛化 | 無 | L2／M | 併入 S4：改用既有 `HistoryRowAnnotation` 列標記，不另建抽象 |
 | S4 | 引導式 bisect | S3 | L2（複雜）／M–L | 已提交 `07664043`～`7d4a1309`，實機驗證與 Codex 審查通過 |
 | S5 | rebase 編輯器 `Alt-↑/↓` 移列 | 無 | L1／S | 已提交 `1d84be36`、審查修正 `b1eaa4c1`，實機驗證通過 |
-| S6 | 行級丟棄安全 | 使用者裁決 | 一期 L2／S，可復原 L3／M | 受阻 |
+| S6 | 行級丟棄安全 | 使用者裁決 | 一期 L2／S，可復原 L3／M | 一期已提交 `a5b8106a`～`ada72fb0`，實機驗證與 Codex 審查通過；可復原丟棄另案 |
 | S7 | 把已暫存變更併入舊 commit | S2、S3 | L3／M–L | 待前置 |
 | S8 | 擴大 CAS Undo 至 checkout／rebase | G3 審查解除 | L3／L | 受阻 |
 
@@ -107,7 +107,7 @@ repo 內沒有 reflog 面板的說明文件。在 `docs/` 新增一段短說明�
 | S3 | 無新入口；把比較基準 chip（`rows/history_canvas.rs:998`）與 `sequencer_banner`（`panels/action_bar.rs:182`）抽成每個 worktree 一份的「圖譜模式」狀態 | 既有比較標記與 merge／rebase 提示列外觀不變 | 既有測試全過，另加模式狀態的單元測試 | 淡化沿用既有「無關列」機制（`history_canvas.rs:692-695`），只作用於已載入列 |
 | S4 | 節點右鍵「標為 good／bad」、命令面板「開始 bisect」 | 狀態列顯示剩餘筆數與 Good／Bad／Skip／結束；good、bad 節點加 chip；結束後回到原分支 | 後端整合測試加狀態測試 | 開始前工作區必須乾淨。是否淡化排除範圍：Claude 要，agy 反對，owner 折衷為範圍由後端一次算好、只淡化已載入列。分級：Codex 評高風險，另兩方評 L2 |
 | S5 | 互動式 rebase 編輯器內按 `Alt-↑/↓` | 選取列移動，沿用上下按鈕的排序與 squash 驗證 | 編輯器單元測試 | 編輯器目前遇修飾鍵就返回（Claude 引 `interactive_rebase.rs:1432-1435`，**未核對**） |
-| S6 | 未暫存 diff 的 `U` | 依裁決而定 | 依裁決而定 | 受阻，見「需要使用者看的選擇」 |
+| S6 | 未暫存 diff 的 `U`、右鍵丟棄行／段／Difftastic 區塊 | 先開確認框，標明丟棄範圍；確認後才丟棄，框開著時檔案被改就不套用；焦點在 diff 外時 U 不丟棄 | UI 測試加實機 | 一期完成。可復原丟棄（二期）另案 |
 | S7 | commit 右鍵「把已暫存變更併入此 commit」 | 先建 fixup，再開已排好的互動式 rebase 編輯器預覽，確認後套用 | 整合測試；L3 需要獨立驗收 | 沿用改訊息的防呆（first-parent、已推送先確認）。有未暫存變更時只允許建 fixup。Codex 引 `history_rebase.rs:770` 的 `run_planned_rebase`（**未核對**） |
 | S8 | 工具列 Undo 擴及 checkout、rebase | 滑到 Undo 時以 chip 標出分支會回到哪裡 | L3 完整鏈 | 受阻。Claude 引 `git_undo.rs:299-309` 的 worktree 阻擋（**未核對**） |
 
@@ -124,4 +124,8 @@ repo 內沒有 reflog 面板的說明文件。在 `docs/` 新增一段短說明�
 - 2026-11-27：Codex（gpt-6.2-astra xhigh）審查共六輪。第一輪 3 高 8 中 2 低，複審 3 高 6 中 2 低，之後三輪各補互斥與相容性缺口；修正提交 `9ab783c7`、`c2e15d73`、`879b0659`、`7d6354ec`、`334c0d50`、`7d4a1309`。第六輪結論：沒有阻擋合併的項目。修正後再以實機重跑 bisect，並以 Apple Git 2.50.1 重跑整合測試。
 - 已知限制（Codex 同意不阻擋）：淺層歷史邊界改變時 fixup 目標可能離開第一父系；同一列兩側都有擴充選單時，bisect 標記使左側選單失效；bisect 動作在寫入前被拒仍會清空 Git Undo。
 - 既有測試失敗（與本次無關）：`the_terminal_toggle_defaults_to_the_action_bar`、`the_views_are_tabs_in_the_action_bar`、`schedule_effect_dispatches_many_variants_with_repo_present`（DeleteBranch 計數）、5 個 LFS 測試（本機無 git lfs）。
-- 下一步：S6 等使用者裁決丟棄做法；S7 需先改為依 SHA 配對 fixup；S8 等 G3 審查狀態查明。
+- 2026-11-27：使用者裁決 S6 採兩段式、先做防呆；S7 先不做；S8 先暫緩。S6 一期提交 `a5b8106a`、`d7d1b29c`、`fc557c95`、`b0d40d25`、`efc671a1`、`ada72fb0`。SDLC 紀錄：`AISDLC-2026-1127-revweave-discard-lines-guard`。
+- S6 審查：Codex 前一個 session 兩輪，終端結束後另開新 session 獨立複審；修正後結論為沒有阻擋合併的項目。修正重點：開框時固定 patch 並比對工作樹檔案指紋（符號連結記連結目標）、確認框依入口標明丟棄範圍（行、段、Difftastic 區塊）、補齊所有丟棄入口。
+- S6 已知限制：pop-out 視窗的確認框開在主視窗（diff 右鍵選單亦同，屬既有架構）；指紋在開框時取，patch 建立到開框之間的變更不在檢查內；只有 F3 外框時按 U 的標題仍寫「選取的行」；Difftastic 只選未變更行仍會開框，由後端回報無可套用變更。
+- S6 全量測試另發現 3 個 `smoke_tests::worktree_badges` 單跑失敗；本計畫未改 sidebar／smoke 檔，未在 base 實跑證明。
+- 下一步：S7 需先改為依 SHA 配對 fixup（使用者裁決先不做）；S8 等 G3 審查狀態查明（使用者裁決先暫緩）。可復原丟棄另案。
