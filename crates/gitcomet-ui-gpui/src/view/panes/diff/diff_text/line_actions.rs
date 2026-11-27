@@ -495,11 +495,16 @@ impl DiffRenderer {
             return false;
         };
         let center = window.viewport_size();
-        self.open_popover_at(
-            crate::view::PopoverKind::DiscardLinesConfirm {
+        // Cancelling returns focus to the diff, where U can be pressed again
+        // on the same selection.
+        let request =
+            crate::view::PopoverRequest::from(crate::view::PopoverKind::DiscardLinesConfirm {
                 repo_id,
                 lines: None,
-            },
+            })
+            .returning_focus_to(self.diff_panel_focus_handle.clone());
+        self.open_popover_at(
+            request,
             gpui::point(center.width / 2.0, center.height / 3.0),
             window,
             cx,
