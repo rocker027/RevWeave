@@ -679,9 +679,13 @@ pub(super) fn bisect_state_loaded(
     result: std::result::Result<Option<gitcomet_core::services::BisectState>, Error>,
 ) -> Vec<Effect> {
     if let Some(repo_state) = state.repos.iter_mut().find(|r| r.id == repo_id) {
-        repo_state.bisect_reload_pending = false;
         match result {
-            Ok(bisect) => repo_state.set_bisect(Loadable::Ready(bisect)),
+            Ok(bisect) => {
+                // Only a successful read shows whether the step started a
+                // session; a failed one keeps pulls refused.
+                repo_state.bisect_reload_pending = false;
+                repo_state.set_bisect(Loadable::Ready(bisect));
+            }
             Err(e) => {
                 let error = e.to_string();
                 push_diagnostic(inputs, repo_state, DiagnosticKind::Error, error.clone());

@@ -202,6 +202,11 @@ fn run_large_file_command_with_auth(
     {
         return Vec::new();
     }
+    // Every annex pull or sync lands here (the toolbar's takeover, the menu's
+    // "Pull with git-annex", an auth replay): it moves the checkout too.
+    if command.pulls() && refuse_pull_during_bisect(state, repo_id) {
+        return Vec::new();
+    }
     let pulls = command.pulls();
     let pushes = command.pushes();
     if let Some(repo) = state.repos.iter_mut().find(|repo| repo.id == repo_id)

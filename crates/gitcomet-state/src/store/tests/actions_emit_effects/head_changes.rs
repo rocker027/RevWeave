@@ -294,6 +294,32 @@ fn bisect_step_emits_effect_and_counts_as_a_local_action() {
         branch: "main".to_string(),
     };
     assert!(reduce(&mut repos, &id_alloc, &mut state, pull()).is_empty());
+    // Nor does a failed reload: it cannot tell whether a session started.
+    reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::Internal(crate::msg::InternalMsg::BisectStateLoaded {
+            repo_id: RepoId(1),
+            result: Err(gitcomet_core::error::Error::new(
+                gitcomet_core::error::ErrorKind::Backend("read failed".to_string()),
+            )),
+        }),
+    );
+    assert!(reduce(&mut repos, &id_alloc, &mut state, pull()).is_empty());
+    // An annex pull takes the same path whatever its entry point.
+    assert!(
+        reduce(
+            &mut repos,
+            &id_alloc,
+            &mut state,
+            Msg::RunLargeFileCommand {
+                repo_id: RepoId(1),
+                command: gitcomet_core::large_files::LargeFileCommand::AnnexPull { content: false },
+            },
+        )
+        .is_empty()
+    );
     reduce(
         &mut repos,
         &id_alloc,
