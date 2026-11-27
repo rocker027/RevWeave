@@ -679,6 +679,7 @@ pub(super) fn bisect_state_loaded(
     result: std::result::Result<Option<gitcomet_core::services::BisectState>, Error>,
 ) -> Vec<Effect> {
     if let Some(repo_state) = state.repos.iter_mut().find(|r| r.id == repo_id) {
+        repo_state.bisect_reload_pending = false;
         match result {
             Ok(bisect) => repo_state.set_bisect(Loadable::Ready(bisect)),
             Err(e) => {
@@ -1100,6 +1101,9 @@ fn finish_repo_action(
         if action == RepoActionKind::Bisect {
             repo_state.bisect_actions_in_flight =
                 repo_state.bisect_actions_in_flight.saturating_sub(1);
+            // The refresh below reloads `bisect`; until it lands, keep the
+            // step's effect (a session just started) guarded.
+            repo_state.bisect_reload_pending = true;
         }
         repo_state.bump_ops_rev();
         if action.writes_worktree() {

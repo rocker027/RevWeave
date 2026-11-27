@@ -178,6 +178,9 @@ pub struct RepoState {
     /// Bisect steps sent and not finished yet. A step checks out the next
     /// commit to test before `bisect` shows the session.
     pub bisect_actions_in_flight: u32,
+    /// A bisect step finished and `bisect` has not been read since: until
+    /// then it may still say no session runs.
+    pub bisect_reload_pending: bool,
     pub merge_commit_message: Loadable<Option<String>>,
     /// Commit whose full message the history hover card is showing, and the
     /// message once it arrives. A single slot: only one card is ever open, and
@@ -463,6 +466,7 @@ impl RepoState {
             bisect: Loadable::NotLoaded,
             bisect_rev: 0,
             bisect_actions_in_flight: 0,
+            bisect_reload_pending: false,
             merge_commit_message: Loadable::NotLoaded,
             tag_push_previews: [None, None],
             hover_commit_message: None,
@@ -1229,7 +1233,7 @@ impl RepoState {
     /// Whether a pull would move the checkout under a bisect: a session runs,
     /// or a step that may start one has not finished.
     pub fn bisect_blocks_pull(&self) -> bool {
-        self.bisect_in_progress() || self.bisect_actions_in_flight > 0
+        self.bisect_in_progress() || self.bisect_actions_in_flight > 0 || self.bisect_reload_pending
     }
 
     pub(crate) fn set_upstream_divergence(&mut self, v: Loadable<Option<UpstreamDivergence>>) {

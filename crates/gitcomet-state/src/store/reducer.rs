@@ -2196,6 +2196,13 @@ fn reduce_inner(
         }
         Msg::StartRepoMaintenance { repo_id } => maintenance::start(state, repo_id),
         Msg::SnoozeRepoMaintenance { repo_id } => maintenance::snooze(state, repo_id),
+        // Checked before git-annex takes a pull over: its sync moves the
+        // checkout too.
+        Msg::Pull { repo_id, .. } | Msg::PullBranch { repo_id, .. }
+            if actions_emit_effects::refuse_pull_during_bisect(state, repo_id) =>
+        {
+            Vec::new()
+        }
         Msg::Pull { repo_id, mode } => match annex_takeover(inputs, repos, state, repo_id, true) {
             Some(effects) => effects,
             None => actions_emit_effects::pull(repos, state, repo_id, mode),

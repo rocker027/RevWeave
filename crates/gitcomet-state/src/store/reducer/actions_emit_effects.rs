@@ -337,7 +337,7 @@ pub(super) fn prune_local_tags(
 
 /// Refuses a pull that would move the checkout under a bisect: the next
 /// verdict would judge a commit other than the one under test.
-fn refuse_pull_during_bisect(state: &mut AppState, repo_id: RepoId) -> bool {
+pub(super) fn refuse_pull_during_bisect(state: &mut AppState, repo_id: RepoId) -> bool {
     let Some(repo) = state.repos.iter_mut().find(|r| r.id == repo_id) else {
         return false;
     };
@@ -356,9 +356,6 @@ pub(super) fn pull(
     repo_id: RepoId,
     mode: PullMode,
 ) -> Vec<Effect> {
-    if refuse_pull_during_bisect(state, repo_id) {
-        return Vec::new();
-    }
     bump_in_flight(repos, state, repo_id, InFlightKind::WorktreePull);
     vec![Effect::RepoCommand(RepoCommandEffect::Pull {
         repo_id,
@@ -374,9 +371,6 @@ pub(super) fn pull_branch(
     remote: String,
     branch: String,
 ) -> Vec<Effect> {
-    if refuse_pull_during_bisect(state, repo_id) {
-        return Vec::new();
-    }
     bump_in_flight(repos, state, repo_id, InFlightKind::WorktreePull);
     vec![Effect::RepoCommand(RepoCommandEffect::PullBranch {
         repo_id,

@@ -276,7 +276,61 @@ fn bisect_step_emits_effect_and_counts_as_a_local_action() {
     );
     assert!(effects.is_empty(), "{effects:?}");
 
-    // A second step before the first finished is dropped.
+    // The step finished, but `bisect` has not been reloaded yet: the session
+    // it may have started is not visible, so pulls stay refused.
+    reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::Internal(crate::msg::InternalMsg::RepoActionFinished {
+            repo_id: RepoId(1),
+            action: crate::msg::RepoActionKind::Bisect,
+            result: Ok(()),
+        }),
+    );
+    let pull = || Msg::PullBranch {
+        repo_id: RepoId(1),
+        remote: "origin".to_string(),
+        branch: "main".to_string(),
+    };
+    assert!(reduce(&mut repos, &id_alloc, &mut state, pull()).is_empty());
+    reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::Internal(crate::msg::InternalMsg::BisectStateLoaded {
+            repo_id: RepoId(1),
+            result: Ok(None),
+        }),
+    );
+    assert!(!reduce(&mut repos, &id_alloc, &mut state, pull()).is_empty());
+}
+
+#[test]
+fn a_second_bisect_step_before_the_first_finishes_is_dropped() {
+    let mut repos: RepositoryRuntimes = Default::default();
+    let id_alloc = AtomicU64::new(1);
+    let mut state = AppState::test_default();
+    state.repos.push(RepoState::new_opening(
+        RepoId(1),
+        RepoSpec {
+            workdir: PathBuf::from("/tmp/repo"),
+        },
+    ));
+    state.active_repo = Some(RepoId(1));
+    let step = crate::msg::BisectStep::Mark {
+        verdict: gitcomet_core::services::BisectVerdict::Bad,
+        commit_id: gitcomet_core::domain::CommitId("deadbeef".into()),
+    };
+    reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::Bisect {
+            repo_id: RepoId(1),
+            step: step.clone(),
+        },
+    );
     let effects = reduce(
         &mut repos,
         &id_alloc,
