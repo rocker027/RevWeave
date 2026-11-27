@@ -1309,14 +1309,16 @@ fn file_and_diff_context_menu_shortcuts_match_expected_actions(cx: &mut gpui::Te
             reverse
         } if *rid == repo_id && patch == "line patch" && !*reverse
     );
+    // Discarding asks first: the entry opens the confirmation.
     assert_shortcut_action!(
         diff_editor_unstaged_model,
         "U",
-        ContextMenuAction::ApplyWorktreePatch {
-            repo_id: rid,
-            patch,
-            reverse
-        } if *rid == repo_id && patch == "discard patch" && *reverse
+        ContextMenuAction::OpenPopover {
+            kind: PopoverKind::DiscardLinesConfirm {
+                repo_id: rid,
+                lines: Some(3),
+            },
+        } if *rid == repo_id
     );
     assert_shortcut_action!(
         diff_editor_unstaged_model,

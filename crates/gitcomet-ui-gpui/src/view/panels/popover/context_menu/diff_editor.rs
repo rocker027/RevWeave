@@ -69,10 +69,12 @@ pub(super) fn model(
                 // Unstage is U too, but only in a staged diff.
                 shortcut: Some("U".into()),
                 disabled: discard_lines_patch.is_none(),
-                action: Box::new(ContextMenuAction::ApplyWorktreePatch {
-                    repo_id,
-                    patch: discard_lines_patch.clone().unwrap_or_default(),
-                    reverse: true,
+                // Discarded lines leave the working tree for good: ask first.
+                action: Box::new(ContextMenuAction::OpenPopover {
+                    kind: PopoverKind::DiscardLinesConfirm {
+                        repo_id,
+                        lines: Some(lines_count),
+                    },
                 }),
             });
         }

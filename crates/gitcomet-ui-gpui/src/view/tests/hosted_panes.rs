@@ -1923,6 +1923,25 @@ fn u_after_a_difftastic_right_click_discards_the_clicked_line(cx: &mut gpui::Tes
         });
         cx.run_until_parked();
         cx.simulate_keystrokes("u");
+        cx.run_until_parked();
+        // U asks before discarding; accept as the user would.
+        cx.update(|window, app| {
+            assert!(
+                matches!(
+                    view.read(app)
+                        .popover_host
+                        .read(app)
+                        .popover_kind_for_tests(),
+                    Some(crate::view::PopoverKind::DiscardLinesConfirm { .. })
+                ),
+                "{case}: U asks before discarding"
+            );
+            renderer.update(app, |pane, cx| pane.discard_selected_lines_confirmed(cx));
+            let host = view.read(app).popover_host.clone();
+            host.update(app, |host, cx| {
+                host.close_popover_and_restore_focus(window, cx)
+            });
+        });
         settle(cx, &view, &store, "line 2 reverted", |_| {
             // Git unlinks before rewriting, so a missing file is "not yet".
             std::fs::read_to_string(dir.path().join("a.rs"))

@@ -304,6 +304,14 @@ pub(crate) enum PopoverKind {
         area: DiffArea,
         path: Option<std::path::PathBuf>,
     },
+    /// Discarding the diff's selected lines (or its outlined change block),
+    /// which Git Undo cannot bring back. `lines` is the count when the opener
+    /// knows it. Confirming asks the diff to discard its selection as it is
+    /// then.
+    DiscardLinesConfirm {
+        repo_id: RepoId,
+        lines: Option<usize>,
+    },
     /// Add the clicked status path — or its folder, or its extension — to the
     /// repo-root `.gitignore`.
     ///

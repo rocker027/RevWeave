@@ -334,6 +334,7 @@ fn repo_for_popover<'a>(
             gitcomet_state::model::ForceRemoveWorktreePrompt { repo_id, .. },
         )
         | PopoverKind::DiscardChangesConfirm { repo_id, .. }
+        | PopoverKind::DiscardLinesConfirm { repo_id, .. }
         | PopoverKind::DiscardFolderChangesConfirm { repo_id, .. }
         | PopoverKind::FileListFolderMenu { repo_id, .. }
         | PopoverKind::FileListLayoutMenu { repo_id, .. }
@@ -529,7 +530,8 @@ fn hash_repo_for_popover<H: Hasher>(
 
         PopoverKind::DiffHunkMenu { .. }
         | PopoverKind::DiffEditorMenu { .. }
-        | PopoverKind::DiscardChangesConfirm { .. } => {
+        | PopoverKind::DiscardChangesConfirm { .. }
+        | PopoverKind::DiscardLinesConfirm { .. } => {
             diff.diff_rev.hash(hasher);
             if let Some(t) = diff.diff_target.as_ref() {
                 view_fingerprint::hash_diff_target(t, hasher)
@@ -978,6 +980,10 @@ fn hash_popover_kind<H: Hasher>(kind: &PopoverKind, hasher: &mut H) {
             repo_id.hash(hasher);
             hash_diff_area(*area, hasher);
             path.hash(hasher);
+        }
+        PopoverKind::DiscardLinesConfirm { repo_id, lines } => {
+            repo_id.hash(hasher);
+            lines.hash(hasher);
         }
         PopoverKind::FileListFolderMenu {
             repo_id,

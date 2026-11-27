@@ -20,6 +20,7 @@ impl PopoverKind {
             | Self::MergeCommitConfirm { repo_id, .. }
             | Self::MergeAbortConfirm { repo_id }
             | Self::DiscardChangesConfirm { repo_id, .. }
+            | Self::DiscardLinesConfirm { repo_id, .. }
             | Self::AddToGitignorePrompt { repo_id, .. }
             | Self::StageConflictMarkersConfirm { repo_id, .. }
             | Self::PullReconcilePrompt { repo_id, .. }

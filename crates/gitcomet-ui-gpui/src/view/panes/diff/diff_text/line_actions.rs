@@ -462,13 +462,57 @@ impl DiffRenderer {
         window: &gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        if self.is_conflict_resolver_active()
+        // Discarding needs the diff in focus and a confirmation: from a file
+        // list the outlined block is easy to lose without seeing it.
+        if action == DiffLineAction::Discard
+            || self.is_conflict_resolver_active()
             || self.diff_panel_focus_handle.contains_focused(window, cx)
             || self.live_focused_change_block().is_none()
         {
             return false;
         }
         self.apply_diff_line_action(action, cx)
+    }
+
+    /// U in the focused diff: asks before discarding the selected lines, if
+    /// there are any the menu would discard. Returns whether the key was
+    /// taken.
+    pub(in crate::view) fn request_discard_lines_confirm(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
+        if !self.diff_line_action_available(DiffLineAction::Discard) || self.diff_actions_busy() {
+            return false;
+        }
+        let has_selection = if self.structural_diff_active() {
+            self.structural_selected_lines()
+                .is_some_and(|selection| !selection.old.is_empty() || !selection.new.is_empty())
+        } else {
+            self.diff_line_action_rows().is_some()
+        };
+        let Some(repo_id) = self.active_repo_id().filter(|_| has_selection) else {
+            return false;
+        };
+        let center = window.viewport_size();
+        self.open_popover_at(
+            crate::view::PopoverKind::DiscardLinesConfirm {
+                repo_id,
+                lines: None,
+            },
+            gpui::point(center.width / 2.0, center.height / 3.0),
+            window,
+            cx,
+        );
+        true
+    }
+
+    /// The confirmation's Discard: discards the selection as it is now.
+    pub(in crate::view) fn discard_selected_lines_confirmed(
+        &mut self,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        self.apply_diff_line_action(DiffLineAction::Discard, cx);
     }
 
     /// Stages, unstages or discards the selected lines, as the diff editor

@@ -103,6 +103,8 @@ fn wait_for_stage_advance(
 
 struct Pressed {
     acted: bool,
+    /// A key opened the discard confirmation, which the helper then accepted.
+    asked: bool,
     index: String,
     worktree: String,
 }
@@ -453,6 +455,7 @@ fn press_in(
     // Space-separated keys press one at a time; each must act, and S must
     // outline the next block once its reload lands, for the following key.
     let mut acted = true;
+    let mut asked = false;
     for (press_ix, key) in key.split(' ').enumerate() {
         if press_ix > 0 {
             wait_for_stage_advance(cx, &view, &store, &case);
@@ -460,6 +463,30 @@ fn press_in(
         let before = store.snapshot().repos[0].ops_rev;
         cx.simulate_keystrokes(key);
         draw_and_drain_test_window(cx);
+        // Discarding asks first; accept, as the user would.
+        let confirm = cx.update(|_, app| {
+            matches!(
+                view.read(app)
+                    .popover_host
+                    .read(app)
+                    .popover_kind_for_tests(),
+                Some(PopoverKind::DiscardLinesConfirm { .. })
+            )
+        });
+        if confirm {
+            asked = true;
+            cx.update(|window, app| {
+                view.read(app)
+                    .diff_renderer
+                    .clone()
+                    .update(app, |pane, cx| pane.discard_selected_lines_confirmed(cx));
+                let host = view.read(app).popover_host.clone();
+                host.update(app, |host, cx| {
+                    host.close_popover_and_restore_focus(window, cx)
+                });
+            });
+            draw_and_drain_test_window(cx);
+        }
         crate::view::test_support::drain_store_worker(&view, cx);
         let key_acted = store.snapshot().repos[0].ops_rev != before;
         acted &= key_acted;
@@ -477,6 +504,7 @@ fn press_in(
     }
     let pressed = Pressed {
         acted,
+        asked,
         index: index_text(dir.path()),
         worktree: std::fs::read_to_string(dir.path().join(PATH)).unwrap(),
     };
@@ -539,6 +567,7 @@ fn u_in_an_unstaged_diff_discards_only_the_selected_rows(cx: &mut gpui::TestAppC
             Focus::DiffPanel,
             "u",
         );
+        assert!(pressed.asked, "{mode:?}: U asks before discarding");
         assert!(pressed.acted, "{mode:?}: U must discard the selected rows");
         assert_eq!(
             pressed.worktree, "one\nTWO\nthree\nfour\nfive\n",
@@ -826,20 +855,15 @@ fn f3_from_outside_the_diff_focuses_it_for_the_line_keys(cx: &mut gpui::TestAppC
 }
 
 /// Opening the diff outlines its first block while focus stays in the file
-/// list; S and U pressed there act on that block without F2/F3 first.
+/// list; S, and U in a staged diff, pressed there act on that block without
+/// F2/F3 first. U in an unstaged diff would discard a block the user may not
+/// be looking at, so from there it discards nothing.
 #[gpui::test]
 fn line_keys_from_the_file_list_act_on_the_opened_block(cx: &mut gpui::TestAppContext) {
     let two_only = "one\nTWO\nthree\nfour\nfive\n";
     for (area, focus, key, index, worktree) in [
         (DiffArea::Unstaged, Focus::StatusList, "s", two_only, EDITED),
         (DiffArea::Unstaged, Focus::Detached, "s", two_only, EDITED),
-        (
-            DiffArea::Unstaged,
-            Focus::StatusList,
-            "u",
-            BASE,
-            "one\ntwo\nthree\nfour\nFIVE\n",
-        ),
         (
             DiffArea::Staged,
             Focus::StatusList,
@@ -864,6 +888,18 @@ fn line_keys_from_the_file_list_act_on_the_opened_block(cx: &mut gpui::TestAppCo
         assert_eq!(pressed.index, index, "{case}");
         assert_eq!(pressed.worktree, worktree, "{case}");
     }
+
+    let pressed = press(
+        cx,
+        DiffArea::Unstaged,
+        DiffViewMode::Inline,
+        Select::Navigated(0),
+        Focus::StatusList,
+        "u",
+    );
+    assert!(!pressed.acted, "U from the file list discards nothing");
+    assert!(!pressed.asked, "nor asks to");
+    assert_eq!(pressed.worktree, EDITED);
 }
 
 /// A mouse selection made after F3 removes the outline and is what the keys

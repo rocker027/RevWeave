@@ -32,6 +32,7 @@ mod delete_remote_branch_confirm;
 mod dialog_size;
 mod discard_changes_confirm;
 mod discard_folder_changes_confirm;
+mod discard_lines_confirm;
 mod error_details;
 mod extension_dialog;
 pub(in crate::view) use extension_dialog::OnClosed;
@@ -754,6 +755,7 @@ fn popover_is_confirm_dialog(kind: &PopoverKind) -> bool {
             | PopoverKind::DeleteBranchesConfirm { .. }
             | PopoverKind::ForceRemoveWorktreeConfirm(_)
             | PopoverKind::DiscardChangesConfirm { .. }
+            | PopoverKind::DiscardLinesConfirm { .. }
             | PopoverKind::DiscardFolderChangesConfirm { .. }
             | PopoverKind::AddToGitignorePrompt { .. }
             | PopoverKind::StageConflictMarkersConfirm { .. }
@@ -1197,6 +1199,7 @@ pub(in super::super) fn popover_width_spec(kind: &PopoverKind) -> Option<Popover
         | PopoverKind::ForceDeleteBranchConfirm(_)
         | PopoverKind::DeleteBranchesConfirm { .. }
         | PopoverKind::DiscardChangesConfirm { .. }
+        | PopoverKind::DiscardLinesConfirm { .. }
         | PopoverKind::DiscardFolderChangesConfirm { .. }
         | PopoverKind::StageConflictMarkersConfirm { .. } => Some(DIALOG_420_WIDTH),
         PopoverKind::PushSetUpstreamPrompt { .. } => Some(DIALOG_320_WIDTH),

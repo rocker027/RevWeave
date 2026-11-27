@@ -966,7 +966,11 @@ impl DiffRenderer {
             && let Some(action) = self.diff_line_action_for_key(keystroke)
             && self.diff_panel_focus_handle.is_focused(window)
         {
-            handled = self.apply_diff_line_action(action, cx);
+            handled = if action == crate::view::panes::diff::diff_text::DiffLineAction::Discard {
+                self.request_discard_lines_confirm(window, cx)
+            } else {
+                self.apply_diff_line_action(action, cx)
+            };
         }
 
         if !handled
