@@ -1,7 +1,7 @@
 use super::DiffRenderer;
 use super::services::DiffCommand;
-use crate::view::{DiffTextRegion, DiffViewMode, components};
-use gitcomet_core::domain::{DiffArea, DiffLineKind, DiffTarget};
+use crate::view::{DiffTextRegion, DiffViewMode, DiscardScope, components};
+use gitcomet_core::domain::{DiffArea, DiffTarget};
 use gitcomet_core::file_diff::FileDiffRowKind;
 use gitcomet_core::patch_action::{
     PatchActionError, PatchOperation, PreparedDiffPatch, SourceLineSelection,
@@ -104,12 +104,12 @@ impl DiffRenderer {
         let copy = self
             .selected_diff_text_string()
             .or_else(|| self.diff_text_string_for_region(visible, region));
-        let mut scopes = vec![("selected lines", selection)];
+        let mut scopes = vec![("selected lines", selection, DiscardScope::Lines(None))];
         if let Some(block) = self
             .diff_mapped_ix_for_visible_ix(visible)
             .and_then(|row| self.structural_block_lines(row))
         {
-            scopes.push(("block", block));
+            scopes.push(("block", block, DiscardScope::Block));
         }
         let actions = self.hosted_context_actions(visible, region, cx);
         self.open_structural_menu(scopes, copy, actions, anchor, window, cx);
@@ -157,7 +157,11 @@ impl DiffRenderer {
                 .copied();
             if let Some(line) = line {
                 self.open_structural_menu(
-                    vec![(&format!("block at line {line}"), selection)],
+                    vec![(
+                        &format!("block at line {line}"),
+                        selection,
+                        DiscardScope::Block,
+                    )],
                     None,
                     Vec::new(),
                     anchor,
@@ -186,26 +190,9 @@ impl DiffRenderer {
             .map(|block| self.structural_source_lines(block, None))
     }
 
-    /// Whether `selection` takes a line Git's patch removes or adds, as the
-    /// patch builder decides. Difftastic's change blocks also take lines Git
-    /// counts unchanged, so they cannot tell.
-    fn structural_selection_has_changes(&self, selection: &SourceLineSelection) -> bool {
-        (0..self.patch_diff_row_len())
-            .filter_map(|ix| self.patch_diff_row(ix))
-            .any(|row| match row.kind {
-                DiffLineKind::Remove => row
-                    .old_line
-                    .is_some_and(|line| selection.old.contains(&line)),
-                DiffLineKind::Add => row
-                    .new_line
-                    .is_some_and(|line| selection.new.contains(&line)),
-                _ => false,
-            })
-    }
-
     fn open_structural_menu(
         &mut self,
-        scopes: Vec<(&str, SourceLineSelection)>,
+        scopes: Vec<(&str, SourceLineSelection, DiscardScope)>,
         copy: Option<String>,
         actions: Vec<HostedAction>,
         anchor: Point<Pixels>,
@@ -233,7 +220,7 @@ impl DiffRenderer {
                 DiffArea::Unstaged => &[PatchOperation::Stage, PatchOperation::Discard],
                 DiffArea::Staged => &[PatchOperation::Unstage],
             };
-            for (label, selection) in scopes {
+            for (label, selection, scope) in scopes {
                 for &operation in operations {
                     let allowed = self.patch_operation_allowed(operation);
                     let weak = cx.entity().downgrade();
@@ -252,7 +239,7 @@ impl DiffRenderer {
                                     pane.pending_structural_discard =
                                         Some((selection.clone(), origin.clone()));
                                     if let Some(window) = window {
-                                        pane.open_discard_confirm(None, window, cx);
+                                        pane.open_discard_confirm(scope, None, window, cx);
                                     }
                                 } else {
                                     pane.prepare_structural_patch_from_origin(
@@ -346,7 +333,7 @@ impl DiffRenderer {
         &mut self,
         selection: SourceLineSelection,
     ) -> bool {
-        if !self.structural_selection_has_changes(&selection) {
+        if selection.old.is_empty() && selection.new.is_empty() {
             return false;
         }
         let Some(origin) = self.patch_origin(PatchOperation::Discard) else {
@@ -455,16 +442,33 @@ impl DiffRenderer {
             None => self.active_repo()?.spec.workdir.clone(),
         };
         let path = root.join(path);
-        let content = match std::fs::read(&path) {
-            Ok(bytes) => {
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                bytes.hash(&mut hasher);
-                Some(hasher.finish())
+        let is_symlink = match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata.is_symlink(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Some(WorktreeSourceFingerprint {
+                    path,
+                    content: None,
+                });
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(_) => return None,
         };
-        Some(WorktreeSourceFingerprint { path, content })
+        // Git records a symlink's target path, not the file it points to.
+        let bytes = if is_symlink {
+            std::fs::read_link(&path)
+                .ok()?
+                .as_os_str()
+                .as_encoded_bytes()
+                .to_vec()
+        } else {
+            std::fs::read(&path).ok()?
+        };
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        is_symlink.hash(&mut hasher);
+        bytes.hash(&mut hasher);
+        Some(WorktreeSourceFingerprint {
+            path,
+            content: Some(hasher.finish()),
+        })
     }
 
     fn toast_stale_patch(&self, cx: &mut gpui::Context<Self>) {

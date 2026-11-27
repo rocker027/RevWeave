@@ -8,6 +8,8 @@ pub(crate) enum DiscardScope {
     Lines(Option<usize>),
     /// Whole change hunks, however few lines are selected in them.
     Hunks(usize),
+    /// A whole Difftastic change block, however few lines are selected in it.
+    Block,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

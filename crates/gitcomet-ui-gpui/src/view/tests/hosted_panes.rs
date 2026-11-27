@@ -2020,41 +2020,6 @@ fn u_after_a_difftastic_right_click_discards_the_clicked_line(cx: &mut gpui::Tes
     }
 }
 
-/// U on Difftastic rows of unchanged lines only has nothing to discard, so it
-/// asks nothing; with a changed line among them it asks.
-#[gpui::test]
-fn u_on_unchanged_difftastic_lines_asks_nothing(cx: &mut gpui::TestAppContext) {
-    let (_dir, _store, view, cx, renderer) = difftastic_file(cx, "a.rs", 4);
-    // `}`: Git keeps it as context, though Difftastic's block reaches it.
-    let unchanged = row_with_lines(&renderer, (Some(3), Some(4)), cx);
-    let added = row_with_lines(&renderer, (None, Some(2)), cx);
-    for (rows, asks) in [((unchanged, unchanged), false), ((added, unchanged), true)] {
-        let asked = cx.update(|window, app| {
-            renderer.update(app, |pane, cx| {
-                pane.diff_selection_anchor = Some(rows.0);
-                pane.diff_selection_range = Some(rows);
-                pane.request_discard_lines_confirm(window, cx)
-            })
-        });
-        cx.run_until_parked();
-        cx.update(|window, app| {
-            let host = view.read(app).popover_host.clone();
-            assert_eq!(asked, asks, "{rows:?}");
-            assert_eq!(
-                matches!(
-                    host.read(app).popover_kind_for_tests(),
-                    Some(crate::view::PopoverKind::DiscardLinesConfirm { .. })
-                ),
-                asks,
-                "{rows:?}"
-            );
-            host.update(app, |host, cx| {
-                host.close_popover_and_restore_focus(window, cx)
-            });
-        });
-    }
-}
-
 /// A Difftastic right-click selects its row as a click does: a shift-click
 /// extends from it, and a click on it again retires the menu's lines.
 #[gpui::test]

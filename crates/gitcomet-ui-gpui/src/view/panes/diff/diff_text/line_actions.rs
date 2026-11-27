@@ -505,7 +505,12 @@ impl DiffRenderer {
             };
             Some(patch)
         };
-        self.open_discard_confirm(patch, window.window_handle(), cx);
+        self.open_discard_confirm(
+            crate::view::DiscardScope::Lines(None),
+            patch,
+            window.window_handle(),
+            cx,
+        );
         true
     }
 
@@ -513,6 +518,7 @@ impl DiffRenderer {
     /// to the diff, where U can ask again.
     pub(in crate::view) fn open_discard_confirm(
         &mut self,
+        scope: crate::view::DiscardScope,
         patch: Option<gitcomet_state::msg::ContentBytes>,
         window: gpui::AnyWindowHandle,
         cx: &mut gpui::Context<Self>,
@@ -523,7 +529,7 @@ impl DiffRenderer {
         let request =
             crate::view::PopoverRequest::from(crate::view::PopoverKind::DiscardLinesConfirm {
                 repo_id,
-                scope: crate::view::DiscardScope::Lines(None),
+                scope,
                 patch,
             })
             .returning_focus_to(self.diff_panel_focus_handle.clone());

@@ -16,6 +16,7 @@ pub(super) fn panel(
         DiscardScope::Lines(_) => language.text("Discard lines", "捨棄選取的行"),
         DiscardScope::Hunks(1) => language.text("Discard hunk", "捨棄整段變更"),
         DiscardScope::Hunks(_) => language.text("Discard hunks", "捨棄多段變更"),
+        DiscardScope::Block => language.text("Discard block", "捨棄整個區塊"),
     };
     let detail = match (scope, language) {
         (DiscardScope::Lines(Some(1)), Language::English) => {
@@ -45,6 +46,13 @@ pub(super) fn panel(
         }
         (DiscardScope::Hunks(count), Language::TraditionalChinese) => {
             format!("這會從工作樹捨棄 {count} 段變更，不只選取的行。")
+        }
+        (DiscardScope::Block, Language::English) => {
+            "This will discard the whole block from the working tree, not only the selected lines."
+                .to_string()
+        }
+        (DiscardScope::Block, Language::TraditionalChinese) => {
+            "這會從工作樹捨棄整個區塊，不只選取的行。".to_string()
         }
     };
     ConfirmDialog::new(title, DIALOG_420_WIDTH)
