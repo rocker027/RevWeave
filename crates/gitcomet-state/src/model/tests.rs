@@ -878,6 +878,15 @@ fn history_rewrite_busy_tracks_every_blocking_operation() {
     assert!(repo.history_rewrite_busy());
     repo.merge_commit_message = Loadable::Ready(None);
     assert!(!repo.history_rewrite_busy());
+
+    // A bisect session checks out commits under test; rewriting history
+    // would derail it.
+    let mut repo = new_repo();
+    repo.bisect = Loadable::Ready(Some(gitcomet_core::services::BisectState::default()));
+    assert!(repo.bisect_in_progress());
+    assert!(repo.history_rewrite_busy());
+    repo.bisect = Loadable::Ready(None);
+    assert!(!repo.history_rewrite_busy());
 }
 
 #[test]

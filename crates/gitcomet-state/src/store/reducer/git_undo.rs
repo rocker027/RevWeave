@@ -227,6 +227,7 @@ pub(super) fn repo_action_finished(
         RepoActionKind::CheckoutBranch
         | RepoActionKind::CheckoutRemoteBranch
         | RepoActionKind::CheckoutCommit
+        | RepoActionKind::Bisect
         | RepoActionKind::CherryPickCommit
         | RepoActionKind::CreateBranchAndCheckout
         | RepoActionKind::RenameBranch

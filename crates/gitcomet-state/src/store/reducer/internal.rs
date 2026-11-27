@@ -231,6 +231,9 @@ pub(super) fn reduce(
         InternalMsg::RebaseStateLoaded { repo_id, result } => {
             external_and_history::rebase_state_loaded(inputs, state, repo_id, result)
         }
+        InternalMsg::BisectStateLoaded { repo_id, result } => {
+            external_and_history::bisect_state_loaded(inputs, state, repo_id, result)
+        }
         InternalMsg::InteractiveRebaseSetupLoaded {
             repo_id,
             base,

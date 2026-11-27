@@ -926,6 +926,9 @@ pub(super) fn schedule_effect(
         Effect::CheckoutCommit { repo_id, commit_id } => {
             repo_actions::schedule_checkout_commit(executor, repos, msg_tx, repo_id, commit_id);
         }
+        Effect::Bisect { repo_id, step } => {
+            repo_actions::schedule_bisect(executor, repos, msg_tx, repo_id, step);
+        }
         Effect::CreateBranch {
             repo_id,
             name,

@@ -292,6 +292,10 @@ pub enum Effect {
         repo_id: RepoId,
         commit_id: CommitId,
     },
+    Bisect {
+        repo_id: RepoId,
+        step: crate::msg::BisectStep,
+    },
 
     CreateBranch {
         repo_id: RepoId,
@@ -466,6 +470,7 @@ impl Effect {
             | Self::CheckoutBranch { .. }
             | Self::CheckoutRemoteBranch { .. }
             | Self::CheckoutCommit { .. }
+            | Self::Bisect { .. }
             | Self::CreateBranch { .. }
             | Self::CreateBranchAndCheckout { .. }
             | Self::RenameBranch { .. }

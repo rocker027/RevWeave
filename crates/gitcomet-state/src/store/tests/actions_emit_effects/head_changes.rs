@@ -224,6 +224,45 @@ fn create_rename_and_delete_branch_emit_effects() {
 }
 
 #[test]
+fn bisect_step_emits_effect_and_counts_as_a_local_action() {
+    let mut repos: RepositoryRuntimes = Default::default();
+    let id_alloc = AtomicU64::new(1);
+    let mut state = AppState::test_default();
+    state.repos.push(RepoState::new_opening(
+        RepoId(1),
+        RepoSpec {
+            workdir: PathBuf::from("/tmp/repo"),
+        },
+    ));
+    state.active_repo = Some(RepoId(1));
+
+    let step = crate::msg::BisectStep::Mark {
+        verdict: gitcomet_core::services::BisectVerdict::Bad,
+        commit_id: gitcomet_core::domain::CommitId("deadbeef".into()),
+    };
+    let effects = reduce(
+        &mut repos,
+        &id_alloc,
+        &mut state,
+        Msg::Bisect {
+            repo_id: RepoId(1),
+            step: step.clone(),
+        },
+    );
+
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::Bisect { repo_id: RepoId(1), step: emitted }] if *emitted == step
+    ));
+    let repo = state
+        .repos
+        .iter()
+        .find(|repo| repo.id == RepoId(1))
+        .expect("repo should exist");
+    assert_eq!(repo.local_actions_in_flight, 1);
+}
+
+#[test]
 fn checkout_commit_emits_effect() {
     let mut repos: RepositoryRuntimes = Default::default();
     let id_alloc = AtomicU64::new(1);

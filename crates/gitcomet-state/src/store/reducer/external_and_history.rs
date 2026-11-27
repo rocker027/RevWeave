@@ -672,6 +672,26 @@ pub(super) fn load_more_history(
         .collect()
 }
 
+pub(super) fn bisect_state_loaded(
+    inputs: &ReducerInputs,
+    state: &mut AppState,
+    repo_id: crate::model::RepoId,
+    result: std::result::Result<Option<gitcomet_core::services::BisectState>, Error>,
+) -> Vec<Effect> {
+    if let Some(repo_state) = state.repos.iter_mut().find(|r| r.id == repo_id) {
+        let value = match result {
+            Ok(bisect) => Loadable::Ready(bisect),
+            Err(e) => {
+                let error = e.to_string();
+                push_diagnostic(inputs, repo_state, DiagnosticKind::Error, error.clone());
+                Loadable::Error(error)
+            }
+        };
+        repo_state.set_bisect(value);
+    }
+    Vec::new()
+}
+
 pub(super) fn rebase_state_loaded(
     inputs: &ReducerInputs,
     state: &mut AppState,
@@ -1068,6 +1088,7 @@ fn finish_repo_action(
             RepoActionKind::CheckoutBranch
                 | RepoActionKind::CheckoutRemoteBranch
                 | RepoActionKind::CheckoutCommit
+                | RepoActionKind::Bisect
                 | RepoActionKind::CreateBranchAndCheckout
                 | RepoActionKind::RenameBranch
         );
@@ -1237,6 +1258,7 @@ pub(super) fn repo_action_clears_head_dependent_state(action: RepoActionKind) ->
         RepoActionKind::CheckoutBranch
             | RepoActionKind::CheckoutRemoteBranch
             | RepoActionKind::CheckoutCommit
+            | RepoActionKind::Bisect
             | RepoActionKind::CherryPickCommit
             | RepoActionKind::CreateBranchAndCheckout
             | RepoActionKind::RenameBranch

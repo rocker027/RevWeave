@@ -303,6 +303,7 @@ pub(crate) fn msg_requires_available_git(msg: &Msg) -> bool {
             | Msg::CheckoutBranch { .. }
             | Msg::CheckoutRemoteBranch { .. }
             | Msg::CheckoutCommit { .. }
+            | Msg::Bisect { .. }
             | Msg::CherryPickCommit { .. }
             | Msg::RevertCommit { .. }
             | Msg::ApplyFileChange { .. }
@@ -1091,6 +1092,7 @@ fn worktree_finish_blocked_repo_id(state: &AppState, msg: &Msg) -> Option<RepoId
         })
         .flatten(),
         Msg::CheckoutCommit { repo_id, .. }
+        | Msg::Bisect { repo_id, .. }
         | Msg::MergeRef { repo_id, .. }
         | Msg::SquashRef { repo_id, .. }
         | Msg::Rebase { repo_id, .. }
@@ -1742,6 +1744,10 @@ fn reduce_inner(
             }
             begin_head_changing_local_action(state, repo_id);
             vec![Effect::CheckoutCommit { repo_id, commit_id }]
+        }
+        Msg::Bisect { repo_id, step } => {
+            begin_head_changing_local_action(state, repo_id);
+            vec![Effect::Bisect { repo_id, step }]
         }
         Msg::CherryPickCommit {
             repo_id,

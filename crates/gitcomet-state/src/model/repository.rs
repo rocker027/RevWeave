@@ -10,7 +10,7 @@ use super::{
 use crate::session;
 use gitcomet_core::domain::*;
 use gitcomet_core::git_operation::GitOperationId;
-use gitcomet_core::services::SequencerState;
+use gitcomet_core::services::{BisectState, SequencerState};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -171,6 +171,8 @@ pub struct RepoState {
     pub recent_commit_messages_rev: u64,
     pub rebase_in_progress: Loadable<bool>,
     pub sequencer_state: Loadable<SequencerState>,
+    /// The worktree's `git bisect` session; `Ready(None)` outside one.
+    pub bisect: Loadable<Option<BisectState>>,
     pub merge_commit_message: Loadable<Option<String>>,
     /// Commit whose full message the history hover card is showing, and the
     /// message once it arrives. A single slot: only one card is ever open, and
@@ -453,6 +455,7 @@ impl RepoState {
             recent_commit_messages_rev: 0,
             rebase_in_progress: Loadable::NotLoaded,
             sequencer_state: Loadable::NotLoaded,
+            bisect: Loadable::NotLoaded,
             merge_commit_message: Loadable::NotLoaded,
             tag_push_previews: [None, None],
             hover_commit_message: None,
@@ -1075,6 +1078,7 @@ impl RepoState {
             )
             || matches!(self.rebase_in_progress, Loadable::Ready(true))
             || matches!(&self.merge_commit_message, Loadable::Ready(Some(_)))
+            || self.bisect_in_progress()
     }
 
     pub fn status_entries_for_area(&self, area: DiffArea) -> Option<&[FileStatus]> {
@@ -1199,6 +1203,19 @@ impl RepoState {
     pub(crate) fn set_sequencer_state(&mut self, v: Loadable<SequencerState>) {
         self.sequencer_state = v;
         self.merge_message_rev = self.merge_message_rev.wrapping_add(1);
+    }
+
+    pub(crate) fn set_bisect(&mut self, v: Loadable<Option<BisectState>>) {
+        if self.bisect != v {
+            self.bisect = v;
+            self.merge_message_rev = self.merge_message_rev.wrapping_add(1);
+        }
+    }
+
+    /// Whether a `git bisect` session is running: HEAD is detached on the
+    /// commit under test, and rewriting history would derail the session.
+    pub fn bisect_in_progress(&self) -> bool {
+        matches!(&self.bisect, Loadable::Ready(Some(_)))
     }
 
     pub(crate) fn set_upstream_divergence(&mut self, v: Loadable<Option<UpstreamDivergence>>) {

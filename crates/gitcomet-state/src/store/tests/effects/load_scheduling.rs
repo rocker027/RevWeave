@@ -2290,8 +2290,9 @@ fn schedule_effect_dispatches_many_variants_with_repo_present() {
         ),
         (Effect::LoadWorktrees { repo_id }, 1),
         (Effect::LoadSubmodules { repo_id }, 1),
-        (Effect::LoadRebaseAndMergeState { repo_id }, 2),
-        (Effect::LoadRebaseState { repo_id }, 1),
+        // Bisect state, then rebase state (and the merge message).
+        (Effect::LoadRebaseAndMergeState { repo_id }, 3),
+        (Effect::LoadRebaseState { repo_id }, 2),
         (Effect::LoadMergeCommitMessage { repo_id }, 1),
         (
             Effect::LoadCommitDetails {

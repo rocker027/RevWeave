@@ -622,6 +622,9 @@ pub(super) fn send_unavailable_git_effect_result(
         Effect::CheckoutCommit { repo_id, .. } => {
             send_repo_action_unavailable(repo_id, RepoActionKind::CheckoutCommit, runtime, &send)
         }
+        Effect::Bisect { repo_id, .. } => {
+            send_repo_action_unavailable(repo_id, RepoActionKind::Bisect, runtime, &send)
+        }
         Effect::CreateBranch { repo_id, .. } => {
             send_repo_action_unavailable(repo_id, RepoActionKind::CreateBranch, runtime, &send)
         }

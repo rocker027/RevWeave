@@ -440,6 +440,42 @@ pub(super) fn schedule_checkout_commit(
     );
 }
 
+pub(super) fn schedule_bisect(
+    executor: &TaskExecutor,
+    repos: &RepositoryRuntimes,
+    msg_tx: StoreWorkerSender,
+    repo_id: RepoId,
+    step: crate::msg::BisectStep,
+) {
+    let context = match &step {
+        crate::msg::BisectStep::Mark { verdict, commit_id } => Some(format!(
+            "{} {}",
+            verdict.git_term(),
+            short_commit_id(commit_id.as_ref())
+        )),
+        crate::msg::BisectStep::Reset => Some("reset".to_string()),
+    };
+    schedule_repo_action_with_hook(
+        executor,
+        repos,
+        msg_tx,
+        repo_id,
+        RepoActionKind::Bisect,
+        context,
+        move |repo| {
+            match step {
+                crate::msg::BisectStep::Mark { verdict, commit_id } => {
+                    repo.bisect_mark_with_output(verdict, &commit_id)
+                }
+                crate::msg::BisectStep::Reset => repo.bisect_reset_with_output(),
+            }
+            .map(|_| ())
+        },
+        |_msg_tx, _repo_id, _result| {},
+        repo_action_finished(RepoActionKind::Bisect),
+    );
+}
+
 pub(super) fn schedule_create_branch(
     executor: &TaskExecutor,
     repos: &RepositoryRuntimes,

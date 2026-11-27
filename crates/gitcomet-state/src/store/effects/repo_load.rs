@@ -1041,6 +1041,13 @@ pub(super) fn schedule_load_rebase_state(
         move |repo, msg_tx| {
             send_or_log(
                 &msg_tx,
+                Msg::Internal(crate::msg::InternalMsg::BisectStateLoaded {
+                    repo_id,
+                    result: repo.bisect_state(&cancellation),
+                }),
+            );
+            send_or_log(
+                &msg_tx,
                 Msg::Internal(crate::msg::InternalMsg::RebaseStateLoaded {
                     repo_id,
                     result: repo.sequencer_state(&cancellation),
@@ -1073,6 +1080,13 @@ pub(super) fn schedule_load_rebase_and_merge_state(
         repo_id,
         msg_tx,
         move |repo, msg_tx| {
+            send_or_log(
+                &msg_tx,
+                Msg::Internal(crate::msg::InternalMsg::BisectStateLoaded {
+                    repo_id,
+                    result: repo.bisect_state(&cancellation),
+                }),
+            );
             send_or_log(
                 &msg_tx,
                 Msg::Internal(crate::msg::InternalMsg::RebaseStateLoaded {

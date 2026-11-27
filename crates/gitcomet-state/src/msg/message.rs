@@ -14,9 +14,9 @@ use gitcomet_core::process::GitRuntimeState;
 use gitcomet_core::remote_url::RemoteUrlPolicy;
 use gitcomet_core::services::GitRepository;
 use gitcomet_core::services::{
-    CheckoutRemoteBranchMode, CommandOutput, CommitOperationOutcome, ConflictSide, ForcePushLease,
-    GitHooks, InteractiveRebaseEntry, PullMode, RemoteUrlKind, ResetMode,
-    SafePushAfterCommitContext, SafePushAfterCommitDecision, SafePushAfterCommitTarget,
+    BisectState, BisectVerdict, CheckoutRemoteBranchMode, CommandOutput, CommitOperationOutcome,
+    ConflictSide, ForcePushLease, GitHooks, InteractiveRebaseEntry, PullMode, RemoteUrlKind,
+    ResetMode, SafePushAfterCommitContext, SafePushAfterCommitDecision, SafePushAfterCommitTarget,
     SequencerState, SubmoduleTrustDecision, SubmoduleTrustTarget, WorktreeCheckout,
 };
 use gitcomet_core::signing_tools::SigningToolsState;
@@ -86,6 +86,19 @@ pub enum RepoActionKind {
     DropStash,
     UndoGitOperation,
     RedoGitOperation,
+    Bisect,
+}
+
+/// One `git bisect` step the user asked for.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BisectStep {
+    /// Records a verdict for a commit, starting a session when none runs.
+    Mark {
+        verdict: BisectVerdict,
+        commit_id: CommitId,
+    },
+    /// Ends the session and returns to where it started.
+    Reset,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -111,6 +124,7 @@ impl RepoActionKind {
                 | Self::DeleteBranches
                 | Self::UndoGitOperation
                 | Self::RedoGitOperation
+                | Self::Bisect
         )
     }
 
@@ -137,7 +151,8 @@ impl RepoActionKind {
             | Self::Stash
             | Self::ApplyStash
             | Self::PopStash
-            | Self::DropStash => RepositoryRequirement::WorkingTree,
+            | Self::DropStash
+            | Self::Bisect => RepositoryRequirement::WorkingTree,
         }
     }
 
@@ -162,7 +177,8 @@ impl RepoActionKind {
             | Self::DiscardWorktreeChangesPaths
             | Self::Stash
             | Self::ApplyStash
-            | Self::PopStash => true,
+            | Self::PopStash
+            | Self::Bisect => true,
             Self::CreateBranch
             | Self::RenameBranch
             | Self::DeleteBranch
@@ -197,6 +213,7 @@ impl RepoActionKind {
             Self::DropStash => "Drop stash",
             Self::UndoGitOperation => "Undo",
             Self::RedoGitOperation => "Redo",
+            Self::Bisect => "Bisect",
         }
     }
 }
@@ -864,6 +881,11 @@ pub enum Msg {
     CheckoutCommit {
         repo_id: RepoId,
         commit_id: CommitId,
+    },
+    /// A `git bisect` step in the repository's worktree.
+    Bisect {
+        repo_id: RepoId,
+        step: BisectStep,
     },
     CherryPickCommit {
         repo_id: RepoId,
@@ -1635,6 +1657,10 @@ pub enum InternalMsg {
     RebaseStateLoaded {
         repo_id: RepoId,
         result: Result<SequencerState, Error>,
+    },
+    BisectStateLoaded {
+        repo_id: RepoId,
+        result: Result<Option<BisectState>, Error>,
     },
     InteractiveRebaseSetupLoaded {
         repo_id: RepoId,

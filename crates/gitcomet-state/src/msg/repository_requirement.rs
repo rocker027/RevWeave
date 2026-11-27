@@ -20,6 +20,7 @@ impl Msg {
             | Self::ChangeSubmodulePointer { repo_id, .. }
             | Self::CheckoutBranch { repo_id, .. }
             | Self::CheckoutCommit { repo_id, .. }
+            | Self::Bisect { repo_id, .. }
             | Self::CheckoutConflictBase { repo_id, .. }
             | Self::CheckoutConflictSide { repo_id, .. }
             | Self::CheckoutRemoteBranch { repo_id, .. }
